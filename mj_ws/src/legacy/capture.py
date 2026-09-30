@@ -1,9 +1,10 @@
+# legacy: 초기 학습 데이터 수집용, 현재 데이터셋은 Roboflow로 관리
 import os
 import cv2
 from datetime import datetime
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # mj_ws/
 SAVE_DIR = str(BASE_DIR / 'tmp')
 CAMERA_ID = 0
 

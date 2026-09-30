@@ -47,7 +47,7 @@ from tf2_ros import Buffer, TransformListener
 
 BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
 
-MODEL_PATH = str(BASE_DIR / 'models' / 'lane_model_ncnn' / 'best_ncnn_model')
+MODEL_PATH = str(BASE_DIR / 'models' / 'lane_model_ncnn')
 INFER_SIZE = 320
 CONF = 0.5
 FRAME_SIZE = (640, 480)

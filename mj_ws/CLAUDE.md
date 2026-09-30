@@ -7,18 +7,39 @@
 
 | 경로 | 내용 | git |
 |---|---|---|
-| `src/` | 파이썬 스크립트 | 추적 |
+| `src/` | 파이썬 스크립트 (`model_ncnn.py` 포함) | 추적 |
+| `src/legacy/` | 더 이상 쓰지 않는 스크립트 (`1_realtime.py`, `capture.py`) | 추적 |
 | `maps/` | SLAM 맵 (`mission4_3.pgm`, `mission4_3.yaml`) | 추적 |
-| `models/` | 모델 가중치 `*.pt`, `lane_model_ncnn/`, `old_pt/` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
+| `models/` | 모델 가중치와 `metadata.yaml`만 (코드 두지 말 것) | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
 | `inputs/` | 입력 영상 `pinky_*.mp4` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
-| `outputs/` | 추론 결과 영상 `result*.mp4` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
+| `outputs/` | 추론 결과 영상 `result_<스크립트명>.mp4` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
 | `tmp/` | 쓰지 않는 파일 (초기 학습용 캡처 jpg, 중복 영상), `capture.py`가 저장하는 곳 | 통째로 제외 |
+| `tmp/legacy_models/` | legacy 가중치 (`best.pt`, `lane_best.pt`, `260921_best.pt`, `old_pt/`) | 제외 |
 | `dataset` | 데이터셋 심볼릭 링크 (아래 참고) | 제외 |
 
 - 스크립트는 `BASE_DIR = Path(__file__).resolve().parent.parent`(= `mj_ws/`)를
   기준으로 경로를 잡으므로 어느 디렉터리에서 실행해도 된다.
+  (`src/legacy/`는 한 단계 더 깊어서 `.parent.parent.parent`)
 - 입력 영상은 `inputs/`에서 읽고, 결과물은 `outputs/`에 저장한다.
 - 모델·영상은 git에 올라가지 않으므로 팀원은 각자 `models/`, `inputs/`에 넣어야 한다.
+
+## 모델
+
+| 경로 | 용도 | 쓰는 스크립트 |
+|---|---|---|
+| `models/lane_model_ncnn/` | 로봇 실주행용 (NCNN, 320×320) | `lane_mission_drive.py`, `model_ncnn.py` |
+| `models/260928_yolon_best.pt` | 저장 영상 검증용 (PC) | `2_realtime.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`, `lane_follow_check.py` |
+| `tmp/legacy_models/*` | legacy (사용 안 함) | `legacy/1_realtime.py` (`old_pt/pouch_best.pt`) |
+
+- ncnn 모델은 `260928_yolon_best.pt`에서 export했다
+  (`models/lane_model_ncnn/best.pt`와 sha256 동일 확인).
+  그래서 검증용 pt와 주행용 ncnn은 같은 가중치다.
+- ultralytics NCNN은 폴더 경로를 받으므로 `MODEL_PATH`는 `models/lane_model_ncnn`을 가리킨다.
+- 모델 경로는 각 스크립트 상단의 `MODEL_PATH` 상수 한 줄로 정해진다. 모델을 바꿀 때는 그 줄만 고친다.
+
+## 출력 파일명 규칙
+
+`outputs/result_<스크립트명>.mp4` (예: `find_target_point.py` → `outputs/result_find_target_point.mp4`)
 
 ## 데이터셋
 

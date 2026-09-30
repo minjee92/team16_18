@@ -12,8 +12,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
 INPUT_SOURCE = str(BASE_DIR / 'inputs' / 'pinky_20260919_182009.mp4')
 # =========================================================================
 
-MODEL_PATH = str(BASE_DIR / 'models' / 'best.pt')
-OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_lane_target.mp4')
+MODEL_PATH = str(BASE_DIR / 'models' / '260928_yolon_best.pt')
+OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_test_seg.mp4')
 
 # 1. 모델 로드 및 클래스 이름 매핑
 model = YOLO(MODEL_PATH)

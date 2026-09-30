@@ -25,8 +25,8 @@ from ultralytics import YOLO
 BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
 
 INPUT_SOURCE = str(BASE_DIR / 'inputs' / 'pinky_20260919_182009.mp4')   # 영상 경로 (웹캠은 0)
-MODEL_PATH = str(BASE_DIR / 'models' / 'best.pt')
-OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_lane_follow.mp4')
+MODEL_PATH = str(BASE_DIR / 'models' / '260928_yolon_best.pt')
+OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_lane_follow_check.mp4')
 
 CONF = 0.5
 INFER_SIZE = 640          # 로봇에서는 320으로 낮출 값

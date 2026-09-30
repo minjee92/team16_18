@@ -11,8 +11,8 @@ INPUT_SOURCE = str(BASE_DIR / 'inputs' / 'pinky_20260919_182009.mp4')  # 웹캠�
 # =========================================================================
 
 # 방금 제대로 구워진 4-Class Segmentation 모델 경로로 수정
-MODEL_PATH = str(BASE_DIR / 'models' / 'best.pt')
-OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_lane_target_dual.mp4')
+MODEL_PATH = str(BASE_DIR / 'models' / '260928_yolon_best.pt')
+OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_find_target_point_dual.mp4')
 
 # 차선 추종을 위한 알고리즘 설정값
 Y_LOOKAHEAD = 350       # 타겟 중심점을 찾을 고정 Y 좌표 (로봇의 시야거리)
