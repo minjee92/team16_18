@@ -128,11 +128,35 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
   `send()` 직전에 정지 명령으로 덮어쓰는 위치가 자연스럽다
 - 현재 상태: `lane_mission_drive.py` 는 **초음파를 쓰지 않는다**. 구독은 `/mission/goal_pose`, `/mission/enable`,
   `odom` 과 TF 뿐이고 `sensor_msgs` import 도 없다. 코드의 "distance" 는 모두 odom 기반 목표·진입 거리다
-- 구현 시 고려:
-  - 초음파 값이 어떤 토픽·메시지로 나오는지는 Pinky 드라이버(`pinky_pro`, 저장소 밖)에서 확인해야 한다. 이번에는 보지 않았다
-  - 메인 루프는 `spin_once()` → `step()`(추론 포함) 순서라, 초음파 값도 루프 한 바퀴(최대 0.1초 + 추론 지연)마다
-    반영된다. 0.15 m/s 이면 한 주기에 1.5cm 이동하므로, 임계 거리에는 이 지연분을 포함해야 한다
-  - 해제 조건(거리가 다시 멀어지면 자동 재출발할지, 수동 재개할지)은 미정
+
+#### 드라이버 확인 결과
+
+`/home/mindy/pinky_new/src/pinky_pro/pinky_sensor_adc/src/main_node.cpp` (제조사 코드, 읽기만 함)
+
+| 항목 | 내용 |
+|---|---|
+| 노드 | `pinky_sensor_adc` (패키지 `pinky_sensor_adc`, 실행 파일 `main_node`). I2C `/dev/i2c-1`, 주소 0x08 의 ADC 를 읽는다 |
+| 토픽 | `us_sensor/range` (상대 이름 → 기본 네임스페이스에서 `/us_sensor/range`) |
+| 메시지 | `sensor_msgs/msg/Range`, `radiation_type = ULTRASOUND`, `frame_id = ultrasonic_link`, `field_of_view = 0.26` rad |
+| 단위 | m (`min_range = 0.02`, `max_range = 3.0`) |
+| 값 계산 | `range = adc / 4096 × 1.0 − 0.03` (ADC 12bit, 채널 3). 가능한 값은 **−0.03 ~ 약 0.97 m** |
+| 측정 실패 / 범위 밖 | 드라이버에 유효성 검사가 없다. **inf·NaN·0 같은 표식 값은 오지 않는다.** I2C 읽기 실패 시 반환값을 확인하지 않고 버퍼 초깃값 0 을 그대로 써서 **−0.03 m** 가 온다. 먼 물체는 계산식상 상한 약 0.97 m 로 포화된다 (`max_range` 3.0 과 다름. 실제 포화 동작은 실측 필요) |
+| 센서 개수 | 초음파는 ADC 채널 1개만 읽어 **토픽 하나**로 publish 한다. 좌/우 별도 토픽 없음. 같은 노드가 IR 3채널(`ir_sensor/range`, `UInt16MultiArray` 원시 ADC 값)과 `batt_state` 도 publish 한다 |
+| 갱신 주기 | 파라미터 `rate` 기본 **20 Hz** (코드 주석의 "100Hz" 는 실제 값과 다름). 한 주기에 5채널 × 6 ms 대기가 있어 약 33 Hz 가 상한 |
+| 기동 | **`pinky_bringup/launch/bringup_robot.launch.xml` 은 이 노드를 띄우지 않는다.** `ros2 run pinky_sensor_adc main_node` 로 따로 실행해야 한다 |
+
+#### 설계에 반영할 점
+
+- 구독: `/us_sensor/range` (`sensor_msgs/msg/Range`), 값은 m
+- **fail-safe 판정**: 다음 중 하나면 정지한다
+  - `range ≤ FRONT_STOP_DISTANCE`
+  - `range < min_range` (0.02 m 미만, I2C 실패 시의 −0.03 m 포함). 무효값을 걸러 무시하면 센서 고장 시 비상 정지가 꺼지므로, 무시하지 말고 정지로 취급한다
+  - 마지막 메시지가 일정 시간 이상 오지 않음 (노드 미실행·중단). 제한 시간은 상수로 두고 값은 미정 (갱신 주기 20 Hz = 0.05초 기준으로 정한다)
+- `FRONT_STOP_DISTANCE` 는 상한 약 0.97 m 보다 충분히 작아야 한다. 그 이상이면 항상 정지 상태가 된다
+- 반응 지연: 센서 주기 최대 0.05초 + 메인 루프 한 바퀴(`spin_once()` → `step()`, 최대 0.1초 + 추론 지연).
+  0.15 m/s 면 0.15초 동안 약 2.3cm 이동하므로 임계 거리에 이 여유를 포함한다
+- 로봇 실행 순서에 `pinky_sensor_adc` 기동을 추가해야 한다 (bringup 이 띄우지 않음)
+- 해제 조건(거리가 다시 멀어지면 자동 재출발할지, 수동 재개할지)은 미정
 
 ## 미뤄둔 것
 
