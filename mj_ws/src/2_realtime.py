@@ -1,10 +1,13 @@
 import cv2
 from ultralytics import YOLO
+from pathlib import Path
 
-INPUT_SOURCE = '/home/mindy/dev_ws/yolo_mission/pinky_20260919_182009.mp4'
+BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
 
-MODEL_PATH = 'best.pt'
-OUTPUT_VIDEO = '/home/mindy/dev_ws/yolo_mission/result.mp4'
+INPUT_SOURCE = str(BASE_DIR / 'inputs' / 'pinky_20260919_182009.mp4')
+
+MODEL_PATH = str(BASE_DIR / 'models' / 'best.pt')
+OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result.mp4')
 
 # 1. 모델 로드
 model = YOLO(MODEL_PATH)

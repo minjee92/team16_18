@@ -1,9 +1,30 @@
-# yolo_mission — 차선 세그멘테이션 프로젝트
+# mj_ws — 차선 세그멘테이션 프로젝트
 
 자율주행 학습 MVP. 실내 트랙(회색 카펫 + 흰색 테이프)에서 촬영한 영상으로
 차선 세그멘테이션 모델을 학습한다.
 
+## 폴더 구조
+
+| 경로 | 내용 | git |
+|---|---|---|
+| `src/` | 파이썬 스크립트 | 추적 |
+| `maps/` | SLAM 맵 (`mission4_3.pgm`, `mission4_3.yaml`) | 추적 |
+| `models/` | 모델 가중치 `*.pt`, `lane_model_ncnn/`, `old_pt/` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
+| `inputs/` | 입력 영상 `pinky_*.mp4` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
+| `outputs/` | 추론 결과 영상 `result*.mp4` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
+| `tmp/` | 쓰지 않는 파일 (초기 학습용 캡처 jpg, 중복 영상), `capture.py`가 저장하는 곳 | 통째로 제외 |
+| `dataset` | 데이터셋 심볼릭 링크 (아래 참고) | 제외 |
+
+- 스크립트는 `BASE_DIR = Path(__file__).resolve().parent.parent`(= `mj_ws/`)를
+  기준으로 경로를 잡으므로 어느 디렉터리에서 실행해도 된다.
+- 입력 영상은 `inputs/`에서 읽고, 결과물은 `outputs/`에 저장한다.
+- 모델·영상은 git에 올라가지 않으므로 팀원은 각자 `models/`, `inputs/`에 넣어야 한다.
+
 ## 데이터셋
+
+`mj_ws/dataset` → `/home/mindy/dev_ws/datasets/lane_seg.v5i.coco-segmentation`
+(심볼릭 링크, git 제외. 팀원은 자기 환경에 맞게
+`ln -s <데이터셋 경로> mj_ws/dataset`으로 만든다)
 
 `lane_seg.v5i.coco-segmentation/` — Roboflow COCO Segmentation 포맷
 

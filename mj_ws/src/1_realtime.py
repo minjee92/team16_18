@@ -1,9 +1,12 @@
 import torch, torchvision
 import cv2
 from ultralytics import YOLO
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
 
 CAM =0
-WHEIGHTS = 'pouch_best.pt'
+WHEIGHTS = str(BASE_DIR / 'models' / 'old_pt' / 'pouch_best.pt')
 
 model = YOLO(WHEIGHTS)
 cap = cv2.VideoCapture(CAM, cv2.CAP_V4L2)

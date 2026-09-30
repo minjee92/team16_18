@@ -1,8 +1,10 @@
 import os
 import cv2
 from datetime import datetime
+from pathlib import Path
 
-SAVE_DIR = os.path.expanduser('~/dev_ws/yolo_mission/capture')
+BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+SAVE_DIR = str(BASE_DIR / 'tmp')
 CAMERA_ID = 0
 
 def main():

@@ -240,12 +240,21 @@ venv/
 .DS_Store
 
 # ---- mj_ws 추가 ----
-# 영상 / 캡처
+# 영상
 *.mp4
 *.avi
 *.mkv
-capture/
-saved_video/
+
+# mj_ws 데이터 폴더: 폴더(.gitkeep)만 추적하고 내용물은 제외
+mj_ws/models/*
+!mj_ws/models/.gitkeep
+mj_ws/inputs/*
+!mj_ws/inputs/.gitkeep
+mj_ws/outputs/*
+!mj_ws/outputs/.gitkeep
+
+# mj_ws 임시 파일 (통째로 제외)
+mj_ws/tmp/
 
 # 모델 관련 폴더
 old_pt/

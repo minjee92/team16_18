@@ -10,8 +10,10 @@
   - 조향값(error, angular)을 화면과 터미널에 표시
 
 실행:
-    python3 lane_follow_check.py
+    python3 src/lane_follow_check.py
 """
+
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -20,9 +22,11 @@ from ultralytics import YOLO
 
 # ----------------------------- 설정 -----------------------------
 
-INPUT_SOURCE = 'pinky_20260919_182009.mp4'   # 영상 경로 (웹캠은 0)
-MODEL_PATH = 'best.pt'
-OUTPUT_VIDEO = 'result_lane_follow.mp4'
+BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+
+INPUT_SOURCE = str(BASE_DIR / 'inputs' / 'pinky_20260919_182009.mp4')   # 영상 경로 (웹캠은 0)
+MODEL_PATH = str(BASE_DIR / 'models' / 'best.pt')
+OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_lane_follow.mp4')
 
 CONF = 0.5
 INFER_SIZE = 640          # 로봇에서는 320으로 낮출 값

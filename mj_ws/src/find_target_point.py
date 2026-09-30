@@ -1,20 +1,23 @@
 import cv2
 import numpy as np
 from ultralytics import YOLO
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
 
 # =========================================================================
-# [이 부분 1개만 변경하세요]
-# 1) 저장된 영상 추론: 'my_video.mp4' (파일 경로 문자열)
+# [설정]
+# 1) 저장된 영상 추론: str(BASE_DIR / 'inputs' / 'my_video.mp4') (파일 경로 문자열)
 # 2) 실시간 웹캠 추론: 0 (숫자)
-INPUT_SOURCE = 'pinky_20260919_182009.mp4'
+INPUT_SOURCE = 0  
 # =========================================================================
 
-MODEL_PATH = 'best.pt'
-OUTPUT_VIDEO = 'result_lane_target.mp4'
+MODEL_PATH = str(BASE_DIR / 'models' / 'best.pt')
+OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_lane_target.mp4')
 
 # 1. 모델 로드 및 클래스 이름 매핑
 model = YOLO(MODEL_PATH)
-class_names = model.names # {0: 'left', 1: 'right'} 형태의 딕셔너리
+class_names = model.names  # {0: 'left', 1: 'right'} 형태의 딕셔너리
 
 # 2. 비디오 캡처 설정
 cap = cv2.VideoCapture(INPUT_SOURCE)
@@ -22,10 +25,10 @@ if not cap.isOpened():
     print(f"오류: 입력 소스를 열 수 없습니다 -> {INPUT_SOURCE}")
     exit()
 
-width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-fps = cap.get(cv2.CAP_PROP_FPS)
-fps = fps if fps > 0 else 30.0
+fps    = cap.get(cv2.CAP_PROP_FPS)
+fps    = fps if fps > 0 else 30.0
 
 # 3. 비디오 저장 객체
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -50,11 +53,11 @@ while cap.isOpened():
 
     # 5. 마스크 데이터가 존재할 경우 중심점 계산
     if result.masks is not None and result.boxes is not None:
-        masks_xy = result.masks.xy # 각 객체의 Polygon (x, y) 좌표 배열
-        classes = result.boxes.cls.cpu().numpy() # 각 감지 객체의 클래스 ID List
+        masks_xy = result.masks.xy      # 각 객체의 Polygon (x, y) 좌표 배열
+        classes = result.boxes.cls.cpu().numpy()  # 각 감지 객체의 클래스 ID List
 
         for mask_pts, cls_id in zip(masks_xy, classes):
-            cls_name = class_names[int(cls_id)] # 클래스 이름 ('left' 또는 'right')
+            cls_name = class_names[int(cls_id)]  # 클래스 이름 ('left' 또는 'right')
 
             if len(mask_pts) == 0:
                 continue
@@ -68,7 +71,7 @@ while cap.isOpened():
                 cx = int(M['m10'] / M['m00'])
                 cy = int(M['m01'] / M['m00'])
 
-                if cls_name == 'left_lane':
+                if cls_name == 'left':
                     left_centroid = (cx, cy)
                 elif cls_name == 'right':
                     right_centroid = (cx, cy)
@@ -76,15 +79,18 @@ while cap.isOpened():
     # 6. 각 차선의 중심점 시각화 (노란색 원)
     if left_centroid:
         cv2.circle(annotated_frame, left_centroid, 7, (0, 255, 255), -1)
-        cv2.putText(annotated_frame, "Left", (left_centroid[0] - 20, left_centroid[1] - 15),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+        cv2.putText(annotated_frame, "Left", (left_centroid[0] - 20, left_centroid[1] - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
     if right_centroid:
         cv2.circle(annotated_frame, right_centroid, 7, (0, 255, 255), -1)
-        cv2.putText(annotated_frame, "Right", (right_centroid[0] - 20, right_centroid[1] - 15),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+        cv2.putText(annotated_frame, "Right", (right_centroid[0] - 20, right_centroid[1] - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
     # 7. 양쪽 차선이 모두 감지되었을 때 Target Point 계산 및 시각화
     if left_centroid and right_centroid:
         # 두 중심점 사이의 연결선 그리기 (파란색 선)
+        cv2.line(annotated_frame, left_centroid, right_centroid, (255, 0, 0), 2)
 
         # 중앙 target_point 계산
         target_x = int((left_centroid[0] + right_centroid[0]) / 2)
@@ -93,11 +99,13 @@ while cap.isOpened():
 
         # Target Point 시각화 (빨간색 원 및 십자가 표시)
         cv2.circle(annotated_frame, target_point, 9, (0, 0, 255), -1)
-        cv2.drawMarker(annotated_frame, target_point, (255, 255, 255),markerType=cv2.MARKER_CROSS, markerSize=15, thickness=2)
+        cv2.drawMarker(annotated_frame, target_point, (255, 255, 255), 
+                       markerType=cv2.MARKER_CROSS, markerSize=15, thickness=2)
 
         # 텍스트 정보 표시
         text = f"Target: ({target_x}, {target_y})"
-        cv2.putText(annotated_frame, text, (target_x - 60, target_y - 20),cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        cv2.putText(annotated_frame, text, (target_x - 60, target_y - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
         # [참고] 향후 로봇으로 전송할 데이터 구조 예시
         # robot_control_data = {"target_x": target_x, "target_y": target_y}

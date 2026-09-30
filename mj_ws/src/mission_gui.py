@@ -11,7 +11,8 @@ Nav2에 주행을 맡기지 않고, 차선 추종 노드가 참고할 목표만 
     /initialpose         (PoseWithCovarianceStamped)  AMCL 초기 위치
 
   사용:
-    python3 mission_gui.py ~/ros2_ws/src/pinky_pro/pinky_navigation/map/my_map.yaml
+    python3 src/mission_gui.py maps/mission4_3.yaml
+    python3 src/mission_gui.py ~/ros2_ws/src/pinky_pro/pinky_navigation/map/my_map.yaml
 
   조작:
     맵 위에서 드래그  → 위치와 방향 지정 (짧게 클릭하면 방향은 현재 유지)

@@ -1,15 +1,18 @@
 import cv2
 import numpy as np
 from ultralytics import YOLO
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
 
 # =========================================================================
 # [설정]
-INPUT_SOURCE = 'pinky_20260919_182009.mp4'  # 웹캠은 0, 저장된 동영상 검증은 '경로/비디오명.mp4'
+INPUT_SOURCE = str(BASE_DIR / 'inputs' / 'pinky_20260919_182009.mp4')  # 웹캠은 0, 저장된 동영상 검증은 inputs/ 아래 파일
 # =========================================================================
 
 # 방금 제대로 구워진 4-Class Segmentation 모델 경로로 수정
-MODEL_PATH = 'best.pt'
-OUTPUT_VIDEO = 'result_lane_target_dual.mp4'
+MODEL_PATH = str(BASE_DIR / 'models' / 'best.pt')
+OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_lane_target_dual.mp4')
 
 # 차선 추종을 위한 알고리즘 설정값
 Y_LOOKAHEAD = 350       # 타겟 중심점을 찾을 고정 Y 좌표 (로봇의 시야거리)

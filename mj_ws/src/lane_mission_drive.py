@@ -16,10 +16,10 @@ Nav2는 주행에 관여하지 않는다. 맵과 AMCL은 위치 파악에만 쓴
 
 실행 순서:
     1) ros2 launch pinky_bringup bringup_robot.launch.xml
-    2) ros2 launch pinky_navigation localization_launch.xml map:=<맵 yaml>
+    2) ros2 launch pinky_navigation localization_launch.xml map:=<맵 yaml>  (예: maps/mission4_3.yaml)
        (Nav2 전체를 띄우면 cmd_vel이 충돌하니 localization만 실행)
-    3) python3 mission_gui.py <맵 yaml>
-    4) python3 lane_mission_drive.py
+    3) python3 src/mission_gui.py maps/mission4_3.yaml
+    4) python3 src/lane_mission_drive.py
 
 처음에는 PUBLISH_CMD = False로 두고 동작만 확인하세요.
 """
@@ -31,6 +31,7 @@ import sys
 import termios
 import time
 import tty
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -44,7 +45,9 @@ from tf2_ros import Buffer, TransformListener
 
 # ============================== 설정 ==============================
 
-MODEL_PATH = 'best_ncnn_model'
+BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+
+MODEL_PATH = str(BASE_DIR / 'models' / 'lane_model_ncnn' / 'best_ncnn_model')
 INFER_SIZE = 320
 CONF = 0.5
 FRAME_SIZE = (640, 480)
