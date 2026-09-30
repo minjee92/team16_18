@@ -45,6 +45,56 @@
 
 `outputs/result_<스크립트명>.mp4` (예: `step1_check_lane_detection.py` → `outputs/result_step1_check_lane_detection.mp4`)
 
+## 하드웨어
+
+### 로봇: Pinky
+
+- 크기: 110(W) / 120(D) / 142(H) mm
+- SBC: 라즈베리파이 5 (8GB)
+- 구동: 다이나믹셀 XL330-M288-T × 2
+  (무부하 103rpm @5V, 정지토크 0.52N·m, 감속비 288.4:1, Velocity Control Mode 지원)
+- 바퀴 지름 50mm (±5mm), 바퀴 간격(트레드) 85mm
+- 최고 속도 약 0.27 m/s (무부하 계산값), 권장 주행 0.10~0.15 m/s
+- 센서: RPLiDAR C1, BNO055 9축 IMU, 초음파 US-016, IR TCRT5000
+
+### 카메라
+
+- Raspberry Pi Camera Module v1 (OV5647), 보드 Rev 1.3
+- 수평 화각 53.5° / 수직 화각 41.4° (표준 사양, 촬영 모드에 따라 달라질 수 있음)
+- 바닥에서 렌즈까지 높이 60mm
+- 로봇 중심선 위에 장착
+- 틸트각: 미측정
+
+### 차동구동 변환식
+
+```python
+# 차동구동 변환 (Pinky)
+# 부호 규칙: omega > 0 = 반시계 방향 = 좌회전 (ROS REP-103 관례)
+import math
+
+WHEEL_D = 0.05      # 바퀴 지름 [m]
+TREAD   = 0.085     # 바퀴 간격 [m]
+MAX_RPM = 103       # XL330-M288-T 무부하 최고 회전수 (5V)
+
+def to_wheel_rpm(v, omega):
+    """v [m/s], omega [rad/s] -> (좌, 우) 바퀴 rpm"""
+    v_left  = v - omega * TREAD / 2
+    v_right = v + omega * TREAD / 2
+    k = 60.0 / (math.pi * WHEEL_D)   # m/s -> rpm
+    return v_left * k, v_right * k
+```
+
+- 위 rpm을 다이나믹셀 Goal Velocity 레지스터 값으로 바꾸는 단위 변환은 별도다. XL330의 단위를 e-manual이나 사용 중인 라이브러리에서 확인해서 쓸 것
+- 부호 규칙(어느 방향이 +인지)은 실제 로봇에서 반드시 검증할 것. 반대면 로봇이 거꾸로 꺾는다
+
+### 실측 필요
+
+- **카메라 거리 캘리브레이션** — 바닥 30/60/90/120cm 지점에 표시하고 촬영해, 거리↔이미지 y좌표
+  대응표를 만들 것. 틸트각을 따로 재는 대신 이걸로 역산한다.
+  (차선을 읽는 샘플 행 y=432/384/336/288(640×480 기준)이 바닥 몇 cm인지도 이 표로 확인한다)
+- **로봇 중심선의 이미지상 x좌표** — 현재 코드는 화면 중앙(x=320)을 로봇 중심선으로 가정한다
+  (`src/common/lane_postprocess.py`의 `error` 계산)
+
 ## 데이터셋
 
 `mj_ws/dataset` → `/home/mindy/dev_ws/datasets/lane_seg.v5i.coco-segmentation`
