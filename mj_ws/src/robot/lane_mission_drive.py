@@ -18,8 +18,8 @@ Nav2는 주행에 관여하지 않는다. 맵과 AMCL은 위치 파악에만 쓴
     1) ros2 launch pinky_bringup bringup_robot.launch.xml
     2) ros2 launch pinky_navigation localization_launch.xml map:=<맵 yaml>  (예: maps/mission4_3.yaml)
        (Nav2 전체를 띄우면 cmd_vel이 충돌하니 localization만 실행)
-    3) python3 src/mission_gui.py maps/mission4_3.yaml
-    4) python3 src/lane_mission_drive.py
+    3) python3 src/station/mission_gui.py maps/mission4_3.yaml
+    4) python3 src/robot/lane_mission_drive.py
 
 처음에는 PUBLISH_CMD = False로 두고 동작만 확인하세요.
 """
@@ -45,7 +45,7 @@ from tf2_ros import Buffer, TransformListener
 
 # ============================== 설정 ==============================
 
-BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # mj_ws/
 
 MODEL_PATH = str(BASE_DIR / 'models' / 'lane_model_ncnn')
 INFER_SIZE = 320

@@ -7,9 +7,11 @@
 
 | 경로 | 내용 | git |
 |---|---|---|
-| `src/` | 파이썬 스크립트 (`model_ncnn.py` 포함) | 추적 |
 | `src/common/` | 모델(.pt / ncnn)과 무관한 공통 모듈. `lane_postprocess.py`: 마스크 → 차선 중앙점·조향 계산 | 추적 |
-| `src/legacy/` | 더 이상 쓰지 않는 스크립트 (`1_realtime.py`, `capture.py`) | 추적 |
+| `src/tools/` | 개발용 (PC). `step1_check_lane_detection.py`: 저장 영상으로 차선 인식·조향 검증 | 추적 |
+| `src/robot/` | 로봇에서 실행. `lane_mission_drive.py`(ncnn 주행), `model_ncnn.py`(ncnn 로드 테스트) | 추적 |
+| `src/station/` | 관제 PC에서 실행. `mission_gui.py`(맵에서 목표 지점 지정) | 추적 |
+| `src/legacy/` | 더 이상 쓰지 않는 스크립트 (`1_realtime.py`, `2_realtime.py`, `capture.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`) | 추적 |
 | `maps/` | SLAM 맵 (`mission4_3.pgm`, `mission4_3.yaml`) | 추적 |
 | `models/` | 모델 가중치와 `metadata.yaml`만 (코드 두지 말 것) | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
 | `inputs/` | 입력 영상 `pinky_*.mp4` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
@@ -18,9 +20,10 @@
 | `tmp/legacy_models/` | legacy 가중치 (`best.pt`, `lane_best.pt`, `260921_best.pt`, `old_pt/`) | 제외 |
 | `dataset` | 데이터셋 심볼릭 링크 (아래 참고) | 제외 |
 
-- 스크립트는 `BASE_DIR = Path(__file__).resolve().parent.parent`(= `mj_ws/`)를
-  기준으로 경로를 잡으므로 어느 디렉터리에서 실행해도 된다.
-  (`src/legacy/`는 한 단계 더 깊어서 `.parent.parent.parent`)
+- 스크립트는 모두 `src/<역할>/` 아래에 있고, `BASE_DIR = Path(__file__).resolve().parent.parent.parent`
+  (= `mj_ws/`)를 기준으로 경로를 잡으므로 어느 디렉터리에서 실행해도 된다.
+- `common` 모듈을 쓰는 스크립트는 상단에서 `src/`를 `sys.path`에 넣은 뒤 import한다
+  (`src/tools/step1_check_lane_detection.py` 참고). 실행은 `python3 src/tools/step1_check_lane_detection.py`처럼 경로로 한다.
 - 입력 영상은 `inputs/`에서 읽고, 결과물은 `outputs/`에 저장한다.
 - 모델·영상은 git에 올라가지 않으므로 팀원은 각자 `models/`, `inputs/`에 넣어야 한다.
 
@@ -28,8 +31,8 @@
 
 | 경로 | 용도 | 쓰는 스크립트 |
 |---|---|---|
-| `models/lane_model_ncnn/` | 로봇 실주행용 (NCNN, 320×320) | `lane_mission_drive.py`, `model_ncnn.py` |
-| `models/260928_yolon_best.pt` | 저장 영상 검증용 (PC) | `2_realtime.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`, `lane_follow_check.py` |
+| `models/lane_model_ncnn/` | 로봇 실주행용 (NCNN, 320×320) | `robot/lane_mission_drive.py`, `robot/model_ncnn.py` |
+| `models/260928_yolon_best.pt` | 저장 영상 검증용 (PC) | `tools/step1_check_lane_detection.py` (legacy의 `2_realtime.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`도 이 모델을 가리킴) |
 | `tmp/legacy_models/*` | legacy (사용 안 함) | `legacy/1_realtime.py` (`old_pt/pouch_best.pt`) |
 
 - ncnn 모델은 `260928_yolon_best.pt`에서 export했다
@@ -40,7 +43,7 @@
 
 ## 출력 파일명 규칙
 
-`outputs/result_<스크립트명>.mp4` (예: `find_target_point.py` → `outputs/result_find_target_point.mp4`)
+`outputs/result_<스크립트명>.mp4` (예: `step1_check_lane_detection.py` → `outputs/result_step1_check_lane_detection.mp4`)
 
 ## 데이터셋
 
@@ -108,3 +111,28 @@ valid/test 점수가 실제 성능보다 높게 나온다. 재분할이 필요�
 - 어노테이션을 변경했으면 오버레이 이미지를 렌더링해 눈으로 검증할 것
   (파란색 left_lane이 왼쪽, 주황색 right_lane이 오른쪽에 붙어야 정상)
 - 좌표 변환 후에는 왕복 복원 테스트로 오차가 0인지 확인할 것
+
+### 동시 실행 금지
+
+추론 작업을 동시에 두 개 이상 돌리지 말 것. i7-1165G7(물리 4코어)에서 ultralytics가
+7스레드를 잡기 때문에, 두 개를 동시에 돌리면 프레임당 59ms → 2,600ms로 약 45배 느려짐.
+반드시 순차로 실행할 것.
+
+### 커밋 메시지 규칙
+
+커밋 메시지의 요약(첫 줄)은 영어로, 본문(설명)은 한국어로 작성한다.
+요약은 Conventional Commits 형식(`type(scope): summary`)을 따른다.
+
+예시:
+
+```
+refactor(mj_ws): reorganize src into role-based folders
+
+- 옛 실습 코드를 legacy/ 로 분리
+- tools/ robot/ station/ common/ 으로 실행 위치별 재편
+- lane_follow_check.py → tools/step1_check_lane_detection.py
+```
+
+### 파일 이름 규칙
+
+`step1_` ~ `step4_` 접두어는 `PLAN.md`의 4단계 계획 결과물에만 붙인다.

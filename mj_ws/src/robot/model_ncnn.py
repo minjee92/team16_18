@@ -3,7 +3,7 @@ import ncnn
 import torch
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # mj_ws/
 MODEL_DIR = BASE_DIR / 'models' / 'lane_model_ncnn'
 
 def test_inference():

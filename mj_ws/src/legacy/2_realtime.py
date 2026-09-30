@@ -2,7 +2,7 @@ import cv2
 from ultralytics import YOLO
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # mj_ws/
 
 INPUT_SOURCE = str(BASE_DIR / 'inputs' / 'pinky_20260919_182009.mp4')
 

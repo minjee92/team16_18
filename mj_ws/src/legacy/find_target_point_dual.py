@@ -3,7 +3,7 @@ import numpy as np
 from ultralytics import YOLO
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # mj_ws/
 
 # =========================================================================
 # [설정]

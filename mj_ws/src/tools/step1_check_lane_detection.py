@@ -13,29 +13,36 @@
 후처리(목표점·조향 계산)는 모델과 무관한 common/lane_postprocess.py에 있다.
 
 실행:
-    python3 src/lane_follow_check.py
-    python3 src/lane_follow_check.py --input inputs/xxx.mp4 --output outputs/yyy.mp4
-    python3 src/lane_follow_check.py --input 0        # 웹캠
-    python3 src/lane_follow_check.py --max-frames 150 # 앞 150프레임만
+    python3 src/tools/step1_check_lane_detection.py
+    python3 src/tools/step1_check_lane_detection.py --input inputs/xxx.mp4 --output outputs/yyy.mp4
+    python3 src/tools/step1_check_lane_detection.py --input 0          # 웹캠
+    python3 src/tools/step1_check_lane_detection.py --max-frames 150   # 앞 150프레임만
+    python3 src/tools/step1_check_lane_detection.py --threads 4        # torch CPU 스레드 수
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 from ultralytics import YOLO
+import torch   # ultralytics 뒤에 import (ultralytics가 torch 로드 전 OMP 설정을 먼저 잡음)
 
-from common.lane_postprocess import LaneTracker, group_masks, pick_main
+SRC_DIR = Path(__file__).resolve().parent.parent     # mj_ws/src/
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))                 # src/common 을 import 하기 위해
+
+from common.lane_postprocess import LaneTracker, group_masks, pick_main  # noqa: E402
 
 
 # ----------------------------- 설정 -----------------------------
 
-BASE_DIR = Path(__file__).resolve().parent.parent   # mj_ws/
+BASE_DIR = SRC_DIR.parent   # mj_ws/
 
 INPUT_SOURCE = str(BASE_DIR / 'inputs' / 'pinky_20260919_182009.mp4')   # 영상 경로 (웹캠은 0)
 MODEL_PATH = str(BASE_DIR / 'models' / '260928_yolon_best.pt')
-OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_lane_follow_check.mp4')
+OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_step1_check_lane_detection.mp4')
 
 CONF = 0.5
 INFER_SIZE = 640          # 로봇에서는 320으로 낮출 값
@@ -161,10 +168,15 @@ def parse_args():
                         help='결과 영상 경로 (기본: %(default)s)')
     parser.add_argument('--max-frames', type=int, default=None,
                         help='이 프레임 수만 처리하고 종료 (기본: 제한 없음)')
+    parser.add_argument('--threads', type=int, default=None,
+                        help='첫 추론 뒤 torch CPU 스레드 수로 설정 '
+                             '(기본: ultralytics 기본값 유지)')
     args = parser.parse_args()
 
     if args.max_frames is not None and args.max_frames <= 0:
         parser.error('--max-frames 는 1 이상이어야 합니다')
+    if args.threads is not None and args.threads <= 0:
+        parser.error('--threads 는 1 이상이어야 합니다')
 
     if isinstance(args.input, str) and args.input.isdigit():
         args.input = int(args.input)          # '0' → 웹캠 0
@@ -231,6 +243,12 @@ def main():
         result = model.predict(
             source=frame, conf=CONF, imgsz=INFER_SIZE, verbose=False
         )[0]
+
+        if args.threads is not None and total == 0:
+            # ultralytics가 첫 predict에서 torch 스레드를 min(8, 코어-1)로 덮어쓰므로 그 뒤에 설정
+            before = torch.get_num_threads()
+            torch.set_num_threads(args.threads)
+            print(f'torch 스레드 {before} → {torch.get_num_threads()}')
 
         masks = build_masks(result, width, height)
 
