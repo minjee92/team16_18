@@ -8,16 +8,25 @@
   - 마스크 픽셀에서 여러 높이의 x좌표를 뽑아 차선 중앙 계산
   - 한쪽 차선만 보일 때는 기억해둔 도로 폭으로 목표점 추정
   - 조향값(error, angular)을 화면과 터미널에 표시
+  - 프레임별 클래스 검출/신뢰도와 마지막 검출률 요약을 터미널에 출력
+
+후처리(목표점·조향 계산)는 모델과 무관한 common/lane_postprocess.py에 있다.
 
 실행:
     python3 src/lane_follow_check.py
+    python3 src/lane_follow_check.py --input inputs/xxx.mp4 --output outputs/yyy.mp4
+    python3 src/lane_follow_check.py --input 0        # 웹캠
+    python3 src/lane_follow_check.py --max-frames 150 # 앞 150프레임만
 """
 
+import argparse
 from pathlib import Path
 
 import cv2
 import numpy as np
 from ultralytics import YOLO
+
+from common.lane_postprocess import LaneTracker, group_masks, pick_main
 
 
 # ----------------------------- 설정 -----------------------------
@@ -46,135 +55,24 @@ LOST_LIMIT = 15           # 차선을 못 본 프레임이 이보다 많으면 �
 
 LANE_CLASSES = ('left_lane', 'right_lane')
 
+REPORT_CLASSES = ('left_lane', 'right_lane', 'crosswalk', 'cross_lane')   # 프레임별 출력
+STAT_CLASSES = ('left_lane', 'right_lane', 'crosswalk')                   # 마지막 요약
 
-# --------------------------- 마스크 처리 ---------------------------
+
+# --------------------------- 모델 결과 변환 ---------------------------
 
 def build_masks(result, width, height):
-    """클래스 이름별로 원본 크기의 이진 마스크 목록을 만든다."""
-
-    out = {}
+    """ultralytics Results → 클래스 이름별 원본 크기 마스크 (후처리는 common 모듈)."""
 
     if result.masks is None or result.boxes is None:
-        return out
+        return {}
 
     names = result.names
     data = result.masks.data.cpu().numpy()
     classes = result.boxes.cls.cpu().numpy().astype(int)
     confs = result.boxes.conf.cpu().numpy()
 
-    for mask, cls_id, conf in zip(data, classes, confs):
-        name = names[cls_id]
-
-        resized = cv2.resize(
-            mask.astype(np.uint8),
-            (width, height),
-            interpolation=cv2.INTER_NEAREST
-        )
-
-        out.setdefault(name, []).append({
-            'mask': resized,
-            'conf': float(conf),
-            'area': int(resized.sum()),
-        })
-
-    return out
-
-
-def pick_main(instances):
-    """같은 클래스가 여럿이면 면적이 가장 큰 것을 고른다."""
-    if not instances:
-        return None
-    return max(instances, key=lambda d: d['area'])['mask']
-
-
-def x_at_row(mask, y):
-    """주어진 행에서 마스크가 차지하는 x의 평균. 없으면 None."""
-    if mask is None or not (0 <= y < mask.shape[0]):
-        return None
-
-    xs = np.flatnonzero(mask[y])
-    if xs.size == 0:
-        return None
-
-    return float(xs.mean())
-
-
-# --------------------------- 목표점 계산 ---------------------------
-
-class LaneTracker:
-    """행마다 좌우 차선 위치를 읽어 목표점과 조향값을 만든다."""
-
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.rows = [int(height * r) for r in SAMPLE_ROWS]
-
-        # 행별 도로 반폭. 한쪽 차선만 보일 때 쓴다
-        self.half_width = {
-            y: width * ROAD_HALF_INIT for y in self.rows
-        }
-
-        self.steer = 0.0
-        self.lost_frames = 0
-
-    def update(self, left_mask, right_mask):
-        """
-        반환: (centers, error, steer, valid)
-          centers : [(x, y, source)] 행별 중앙점
-          error   : -1.0 ~ 1.0 (양수면 로봇이 왼쪽으로 치우침)
-          steer   : 부드럽게 처리한 조향값
-          valid   : 차선을 하나라도 봤는지
-        """
-
-        centers = []
-        weights = []
-        seen = False
-
-        for y, w in zip(self.rows, ROW_WEIGHTS):
-
-            lx = x_at_row(left_mask, y)
-            rx = x_at_row(right_mask, y)
-
-            if lx is not None and rx is not None:
-                # 양쪽 다 보임 → 중앙이 확실하고, 도로 폭도 갱신
-                cx = (lx + rx) / 2.0
-                measured = abs(rx - lx) / 2.0
-                self.half_width[y] += ROAD_HALF_SMOOTH * (measured - self.half_width[y])
-                source = 'both'
-
-            elif lx is not None:
-                cx = lx + self.half_width[y]
-                source = 'left'
-
-            elif rx is not None:
-                cx = rx - self.half_width[y]
-                source = 'right'
-
-            else:
-                continue
-
-            seen = True
-            centers.append((int(cx), y, source))
-            weights.append(w)
-
-        if not seen:
-            self.lost_frames += 1
-            if self.lost_frames > LOST_LIMIT:
-                self.steer = 0.0            # 오래 못 보면 직진으로 되돌림
-            return centers, None, self.steer, False
-
-        self.lost_frames = 0
-
-        total = sum(weights)
-        target_x = sum(c[0] * w for c, w in zip(centers, weights)) / total
-
-        # 화면 중심 기준 오차. 양수면 목표가 오른쪽 → 로봇이 왼쪽으로 치우침
-        error = (target_x - self.width / 2.0) / (self.width / 2.0)
-
-        raw = STEER_GAIN * error
-        self.steer += STEER_SMOOTH * (raw - self.steer)
-
-        return centers, error, self.steer, True
+    return group_masks(data, [names[c] for c in classes], confs, width, height)
 
 
 # ----------------------------- 시각화 -----------------------------
@@ -227,9 +125,55 @@ def draw(frame, centers, error, steer, valid, events, tracker):
     return frame
 
 
+# ----------------------------- 리포트 -----------------------------
+
+def frame_report(index, masks):
+    """프레임별 클래스 검출 여부와 최고 신뢰도 한 줄."""
+    parts = []
+    for name in REPORT_CLASSES:
+        found = masks.get(name)
+        conf = f'{max(d["conf"] for d in found):.2f}' if found else ' -  '
+        parts.append(f'{name} {conf}')
+    return f'frame {index:5d} | ' + ' | '.join(parts)
+
+
+def print_summary(total, counts, both_missed):
+    """전체 프레임 대비 클래스별 검출률과 좌우 차선을 모두 놓친 프레임 수."""
+
+    def pct(n):
+        return 100.0 * n / total if total else 0.0
+
+    print()
+    print(f'===== 요약 (처리 프레임 {total}) =====')
+    for name in STAT_CLASSES:
+        print(f'{name:<12} {counts[name]:5d} 프레임  {pct(counts[name]):5.1f}%')
+    print(f'{"양쪽 놓침":<11} {both_missed:5d} 프레임  {pct(both_missed):5.1f}%'
+          '   (left_lane, right_lane 둘 다 미검출)')
+
+
 # ------------------------------ 메인 ------------------------------
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='차선 추종 검증기 (저장 영상 / 웹캠)')
+    parser.add_argument('--input', default=INPUT_SOURCE,
+                        help='입력 영상 경로, 웹캠은 번호 (기본: %(default)s)')
+    parser.add_argument('--output', default=OUTPUT_VIDEO,
+                        help='결과 영상 경로 (기본: %(default)s)')
+    parser.add_argument('--max-frames', type=int, default=None,
+                        help='이 프레임 수만 처리하고 종료 (기본: 제한 없음)')
+    args = parser.parse_args()
+
+    if args.max_frames is not None and args.max_frames <= 0:
+        parser.error('--max-frames 는 1 이상이어야 합니다')
+
+    if isinstance(args.input, str) and args.input.isdigit():
+        args.input = int(args.input)          # '0' → 웹캠 0
+    return args
+
+
 def main():
+
+    args = parse_args()
 
     model = YOLO(MODEL_PATH)
     print('클래스:', model.names)
@@ -238,9 +182,9 @@ def main():
     if missing:
         print(f'경고: 모델에 {missing} 클래스가 없습니다. 이름을 확인하세요.')
 
-    cap = cv2.VideoCapture(INPUT_SOURCE)
+    cap = cv2.VideoCapture(args.input)
     if not cap.isOpened():
-        print(f'입력 소스를 열 수 없습니다: {INPUT_SOURCE}')
+        print(f'입력 소스를 열 수 없습니다: {args.input}')
         return
 
     ok, first = cap.read()
@@ -255,14 +199,30 @@ def main():
     fps = fps if fps and fps > 0 else 20.0
 
     writer = cv2.VideoWriter(
-        OUTPUT_VIDEO, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height)
+        args.output, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height)
     )
 
-    tracker = LaneTracker(width, height)
+    tracker = LaneTracker(
+        width, height,
+        sample_rows=SAMPLE_ROWS,
+        row_weights=ROW_WEIGHTS,
+        road_half_init=ROAD_HALF_INIT,
+        road_half_smooth=ROAD_HALF_SMOOTH,
+        steer_gain=STEER_GAIN,
+        steer_smooth=STEER_SMOOTH,
+        lost_limit=LOST_LIMIT,
+    )
+
+    total = 0
+    counts = {name: 0 for name in STAT_CLASSES}
+    both_missed = 0
 
     print(f'{width}x{height} @ {fps:.1f}fps   종료: q')
 
     while True:
+
+        if args.max_frames is not None and total >= args.max_frames:
+            break
 
         ok, frame = cap.read()
         if not ok:
@@ -273,6 +233,14 @@ def main():
         )[0]
 
         masks = build_masks(result, width, height)
+
+        print(frame_report(total, masks))
+        total += 1
+        for name in STAT_CLASSES:
+            if masks.get(name):
+                counts[name] += 1
+        if not masks.get('left_lane') and not masks.get('right_lane'):
+            both_missed += 1
 
         left_mask = pick_main(masks.get('left_lane'))
         right_mask = pick_main(masks.get('right_lane'))
@@ -297,7 +265,9 @@ def main():
     cap.release()
     writer.release()
     cv2.destroyAllWindows()
-    print(f'저장 완료: {OUTPUT_VIDEO}')
+    print(f'저장 완료: {args.output}')
+
+    print_summary(total, counts, both_missed)
 
 
 if __name__ == '__main__':

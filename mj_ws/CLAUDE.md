@@ -8,6 +8,7 @@
 | 경로 | 내용 | git |
 |---|---|---|
 | `src/` | 파이썬 스크립트 (`model_ncnn.py` 포함) | 추적 |
+| `src/common/` | 모델(.pt / ncnn)과 무관한 공통 모듈. `lane_postprocess.py`: 마스크 → 차선 중앙점·조향 계산 | 추적 |
 | `src/legacy/` | 더 이상 쓰지 않는 스크립트 (`1_realtime.py`, `capture.py`) | 추적 |
 | `maps/` | SLAM 맵 (`mission4_3.pgm`, `mission4_3.yaml`) | 추적 |
 | `models/` | 모델 가중치와 `metadata.yaml`만 (코드 두지 말 것) | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
