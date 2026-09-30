@@ -22,6 +22,7 @@
 
 import argparse
 import sys
+import unicodedata
 from pathlib import Path
 
 import cv2
@@ -144,18 +145,77 @@ def frame_report(index, masks):
     return f'frame {index:5d} | ' + ' | '.join(parts)
 
 
-def print_summary(total, counts, both_missed):
-    """전체 프레임 대비 클래스별 검출률과 좌우 차선을 모두 놓친 프레임 수."""
+def _pad(text, width):
+    """한글(전각)을 2칸으로 세어 터미널 폭 기준으로 오른쪽을 채운다."""
+    cells = sum(2 if unicodedata.east_asian_width(ch) in 'WF' else 1 for ch in text)
+    return text + ' ' * max(0, width - cells)
 
-    def pct(n):
-        return 100.0 * n / total if total else 0.0
 
-    print()
-    print(f'===== 요약 (처리 프레임 {total}) =====')
-    for name in STAT_CLASSES:
-        print(f'{name:<12} {counts[name]:5d} 프레임  {pct(counts[name]):5.1f}%')
-    print(f'{"양쪽 놓침":<11} {both_missed:5d} 프레임  {pct(both_missed):5.1f}%'
-          '   (left_lane, right_lane 둘 다 미검출)')
+class DetectionStats:
+    """
+    프레임별 검출 결과를 모아 마지막 요약을 만든다.
+    프레임 번호는 frame 로그와 같이 0부터 센다.
+    """
+
+    def __init__(self):
+        self.total = 0
+        self.counts = {name: 0 for name in STAT_CLASSES}
+        self.lanes = {'both': 0, 'one': 0, 'none': 0}   # 좌우 차선 검출 개수별 프레임 수
+        self.miss_runs = []        # 좌우 차선 둘 다 미검출이 이어진 구간 [(시작 프레임, 길이)]
+        self._run_start = None
+
+    def update(self, masks):
+        index = self.total
+        self.total += 1
+
+        for name in STAT_CLASSES:
+            if masks.get(name):
+                self.counts[name] += 1
+
+        seen = bool(masks.get('left_lane')) + bool(masks.get('right_lane'))
+        self.lanes[('none', 'one', 'both')[seen]] += 1
+
+        if seen == 0:
+            if self._run_start is None:
+                self._run_start = index
+        else:
+            self._close_run(index)
+
+    def _close_run(self, end):
+        if self._run_start is not None:
+            self.miss_runs.append((self._run_start, end - self._run_start))
+            self._run_start = None
+
+    def print_summary(self, fps, lost_limit):
+        self._close_run(self.total)     # 마지막 프레임까지 이어진 구간 마감
+
+        def pct(n):
+            return 100.0 * n / self.total if self.total else 0.0
+
+        def row(label, n):
+            print(f'  {_pad(label, 14)}{n:5d} 프레임  {pct(n):5.1f}%')
+
+        print()
+        print(f'===== 요약 (처리 프레임 {self.total}) =====')
+        print('클래스별 검출')
+        for name in STAT_CLASSES:
+            row(name, self.counts[name])
+
+        print('좌우 차선 (left_lane / right_lane)')
+        row('양쪽 다 검출', self.lanes['both'])
+        row('한쪽만 검출', self.lanes['one'])
+        row('둘 다 미검출', self.lanes['none'])
+
+        print('둘 다 미검출 연속 구간')
+        if self.miss_runs:
+            start, length = max(self.miss_runs, key=lambda r: r[1])   # 길이가 같으면 먼저 나온 구간
+            long_runs = sum(1 for _, n in self.miss_runs if n >= lost_limit)
+            print(f'  {_pad("최장", 14)}{length:5d} 프레임  '
+                  f'(frame {start} 부터, 약 {start / fps:.1f}초)')
+            print(f'  {_pad(f"{lost_limit}프레임 이상", 14)}{long_runs:5d} 회  '
+                  f'(LOST_LIMIT={lost_limit}, 전체 구간 {len(self.miss_runs)}개)')
+        else:
+            print('  없음')
 
 
 # ------------------------------ 메인 ------------------------------
@@ -225,15 +285,13 @@ def main():
         lost_limit=LOST_LIMIT,
     )
 
-    total = 0
-    counts = {name: 0 for name in STAT_CLASSES}
-    both_missed = 0
+    stats = DetectionStats()
 
     print(f'{width}x{height} @ {fps:.1f}fps   종료: q')
 
     while True:
 
-        if args.max_frames is not None and total >= args.max_frames:
+        if args.max_frames is not None and stats.total >= args.max_frames:
             break
 
         ok, frame = cap.read()
@@ -244,7 +302,7 @@ def main():
             source=frame, conf=CONF, imgsz=INFER_SIZE, verbose=False
         )[0]
 
-        if args.threads is not None and total == 0:
+        if args.threads is not None and stats.total == 0:
             # ultralytics가 첫 predict에서 torch 스레드를 min(8, 코어-1)로 덮어쓰므로 그 뒤에 설정
             before = torch.get_num_threads()
             torch.set_num_threads(args.threads)
@@ -252,13 +310,8 @@ def main():
 
         masks = build_masks(result, width, height)
 
-        print(frame_report(total, masks))
-        total += 1
-        for name in STAT_CLASSES:
-            if masks.get(name):
-                counts[name] += 1
-        if not masks.get('left_lane') and not masks.get('right_lane'):
-            both_missed += 1
+        print(frame_report(stats.total, masks))
+        stats.update(masks)
 
         left_mask = pick_main(masks.get('left_lane'))
         right_mask = pick_main(masks.get('right_lane'))
@@ -285,7 +338,7 @@ def main():
     cv2.destroyAllWindows()
     print(f'저장 완료: {args.output}')
 
-    print_summary(total, counts, both_missed)
+    stats.print_summary(fps, LOST_LIMIT)
 
 
 if __name__ == '__main__':
