@@ -238,3 +238,22 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 .DS_Store
+
+# ---- mj_ws 추가 ----
+# 영상 / 캡처
+*.mp4
+*.avi
+*.mkv
+capture/
+saved_video/
+
+# 모델 관련 폴더
+old_pt/
+lane_model_ncnn/
+
+# 데이터셋 심볼릭 링크 (절대경로라 팀원에겐 무의미)
+dataset
+
+# 오타로 생긴 파일
+base_footprint:
+pinky@*
