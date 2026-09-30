@@ -106,9 +106,8 @@ def draw(frame, centers, error, steer, valid, events, tracker):
         cv2.polylines(frame, [pts], False, (0, 255, 0), 2)
 
     if valid:
-        target_x = int(np.average(
-            [c[0] for c in centers], weights=ROW_WEIGHTS[:len(centers)]
-        ))
+        # 다시 계산하지 않고 LaneTracker가 조향에 실제로 쓴 목표점을 그린다
+        target_x = int(tracker.target_x)
         target_y = tracker.rows[0]
         cv2.drawMarker(frame, (target_x, target_y), (0, 0, 255),
                        cv2.MARKER_CROSS, 22, 2)

@@ -99,6 +99,7 @@ class LaneTracker:
 
         self.steer = 0.0
         self.lost_frames = 0
+        self.target_x = None     # 마지막 update에서 조향에 쓴 목표점 x (못 봤으면 None)
 
     def update(self, left_mask, right_mask):
         """
@@ -107,6 +108,7 @@ class LaneTracker:
           error   : -1.0 ~ 1.0 (양수면 로봇이 왼쪽으로 치우침)
           steer   : 부드럽게 처리한 조향값
           valid   : 차선을 하나라도 봤는지
+        조향에 쓴 목표점 x는 self.target_x 에 남는다 (시각화용).
         """
 
         centers = []
@@ -141,6 +143,7 @@ class LaneTracker:
             weights.append(w)
 
         if not seen:
+            self.target_x = None
             self.lost_frames += 1
             if self.lost_frames > self.lost_limit:
                 self.steer = 0.0            # 오래 못 보면 직진으로 되돌림
@@ -150,6 +153,7 @@ class LaneTracker:
 
         total = sum(weights)
         target_x = sum(c[0] * w for c, w in zip(centers, weights)) / total
+        self.target_x = target_x
 
         # 화면 중심 기준 오차. 양수면 목표가 오른쪽 → 로봇이 왼쪽으로 치우침
         error = (target_x - self.width / 2.0) / (self.width / 2.0)
