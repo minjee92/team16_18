@@ -216,3 +216,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 데이터셋 (git에 넣지 않음)
+**/lane_seg*/
+**/datasets/
+**/data/
+*.zip
+
+# 모델 가중치 / 학습 결과
+*.pt
+*.pth
+*.onnx
+runs/
+weights/
+
+# 임시 산출물
+_verify/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+.DS_Store
