@@ -14,8 +14,8 @@ ROS_SETUP=${ROS_SETUP:-/opt/ros/jazzy/setup.bash}
 export PYTHONDONTWRITEBYTECODE=1
 
 fast=(test_drive_control.py test_lane_tracker.py test_step1_stats.py)
-slow=(test_tracker_parity.py test_step2_replay.py test_step2_ros_e2e.py)
-needs_ros=(test_step2_replay.py test_step2_ros_e2e.py)
+slow=(test_tracker_parity.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py)
+needs_ros=(test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py)
 
 tests=("${fast[@]}")
 [ "${1:-}" = all ] && tests+=("${slow[@]}")

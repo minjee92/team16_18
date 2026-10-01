@@ -36,6 +36,7 @@ import tty
 from pathlib import Path
 
 import cv2
+import numpy as np
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.executors import SingleThreadedExecutor
@@ -194,6 +195,26 @@ class VideoSource:
         self.cap.release()
 
 
+def verify_input_size(model, expected):
+    """
+    워밍업 추론을 한 번 하고, 모델이 실제로 쓰는 입력 크기가 expected 와 같은지 확인한다.
+    반환: (ok, 메시지)
+
+    export 된 고정 크기 모델(ncnn)은 첫 predict 에서만 export 크기로 바뀌고, 다음 predict 부터는
+    요청한 크기가 다시 들어가 두 번째 프레임부터 검출이 0 이 된다. 로봇이 "차선 없음"으로 조용히
+    멈추는 대신, 시작할 때 이 불일치를 잡아 종료한다.
+    """
+    dummy = np.zeros((FRAME_SIZE[1], FRAME_SIZE[0], 3), np.uint8)
+    model.predict(source=dummy, conf=CONF, imgsz=expected, verbose=False)
+    used = model.predictor.args.imgsz
+    used = list(used) if isinstance(used, (list, tuple)) else [used, used]
+    if used == [expected, expected]:
+        return True, f'입력 크기 {expected} 확인'
+    return False, (f'모델 입력 크기 불일치: 이 모델은 {used[1]}x{used[0]} 로 고정되어 있는데 INFER_SIZE = {expected} 입니다.\n'
+                   f'  이대로 주행하면 두 번째 프레임부터 차선이 하나도 검출되지 않습니다.\n'
+                   f'  INFER_SIZE 를 {used[0]} 로 바꾸거나, 모델을 {expected} 로 다시 export 하세요.')
+
+
 def build_masks(result, width, height):
     """ultralytics Results → 클래스 이름별 원본 크기 마스크 (후처리는 common 모듈)."""
     if result.masks is None or result.boxes is None:
@@ -313,6 +334,11 @@ def main():
         from ultralytics import YOLO
         node.get_logger().info(f'모델 로딩: {args.model}')
         model = YOLO(args.model, task='segment')
+        ok, message = verify_input_size(model, INFER_SIZE)
+        if not ok:
+            print(f'\n오류: {message}\n')
+            return 2                         # finally 에서 정리 후 종료
+        node.get_logger().info(message)
 
         source = VideoSource(args.video, FRAME_SIZE) if args.video else PiCameraSource(FRAME_SIZE)
         width, height = FRAME_SIZE
@@ -402,7 +428,8 @@ def main():
         if rclpy.ok():
             rclpy.shutdown()
         print('종료 완료')
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
