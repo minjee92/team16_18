@@ -171,6 +171,10 @@ valid/test 점수가 실제 성능보다 높게 나온다. 재분할이 필요�
   기존 GT 대비 IoU 중앙값 0.87. `crosswalk` / `cross_lane`은 자동 배정하지
   않으므로 사람이 지정해야 한다.
 
+## 테스트
+
+회귀 테스트: `bash src/tests/run_tests.sh` (빠른 것만, 몇 초) / `bash src/tests/run_tests.sh all` (ncnn 모델·입력 영상·ROS 포함, 약 2분, 순차 실행) — 정지·속도 로직을 일부러 바꿨으면 결과를 확인한 뒤 `src/tests/test_step2_replay.py` 의 `EXPECTED` 를 갱신한다.
+
 ## 작업 규칙
 
 - 데이터셋 파일을 제자리에서 수정하기 전에 반드시 백업하거나 새 폴더로 출력할 것
