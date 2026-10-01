@@ -72,9 +72,12 @@ class LaneTracker:
       road_half_smooth : 도로 폭 갱신 속도 (0~1, 클수록 빠르게 반영)
       steer_gain       : 조향 민감도
       steer_smooth     : 조향값 부드럽게 (0~1, 작을수록 부드러움)
-      lost_limit       : 차선을 못 본 프레임이 이보다 많으면 조향 0으로
+      lost_stop_sec    : 차선을 못 본 시간이 이보다 길면 조향 0으로 (초)
       steer_d_gain     : 오차 변화량(D항) 가중치. 0이면 D항 없음
       steer_clip       : 조향값 절댓값 상한. None이면 제한 없음
+
+    차선 상실은 프레임 수가 아니라 시간으로 판단한다 (로봇과 PC의 fps가 달라서).
+    update()에 넘기는 now 는 초 단위 시각: 로봇은 time.monotonic(), 저장 영상은 프레임 번호 ÷ fps.
     """
 
     def __init__(self, width, height,
@@ -84,7 +87,7 @@ class LaneTracker:
                  road_half_smooth=0.1,
                  steer_gain=1.0,
                  steer_smooth=0.35,
-                 lost_limit=15,
+                 lost_stop_sec=2.0,
                  steer_d_gain=0.0,
                  steer_clip=None):
         self.width = width
@@ -94,7 +97,7 @@ class LaneTracker:
         self.road_half_smooth = road_half_smooth
         self.steer_gain = steer_gain
         self.steer_smooth = steer_smooth
-        self.lost_limit = lost_limit
+        self.lost_stop_sec = lost_stop_sec
         self.steer_d_gain = steer_d_gain
         self.steer_clip = steer_clip
 
@@ -105,7 +108,9 @@ class LaneTracker:
 
         self.steer = 0.0
         self.prev_error = 0.0    # D항 계산용 직전 오차
-        self.lost_frames = 0
+        self.lost_frames = 0     # 연속으로 못 본 프레임 수 (표시용)
+        self.lost_time = 0.0     # 마지막으로 차선을 본 뒤 지난 시간 (초)
+        self.last_valid_time = None
         self.target_x = None     # 마지막 update에서 조향에 쓴 목표점 x (못 봤으면 None)
 
     def reset(self):
@@ -113,17 +118,24 @@ class LaneTracker:
         self.steer = 0.0
         self.prev_error = 0.0
         self.lost_frames = 0
+        self.lost_time = 0.0
+        self.last_valid_time = None
         self.target_x = None
 
-    def update(self, left_mask, right_mask):
+    def update(self, left_mask, right_mask, now):
         """
+        now: 이 프레임의 시각 (초)
+
         반환: (centers, error, steer, valid)
           centers : [(x, y, source)] 행별 중앙점
           error   : -1.0 ~ 1.0 (양수면 로봇이 왼쪽으로 치우침)
           steer   : 부드럽게 처리한 조향값
           valid   : 차선을 하나라도 봤는지
-        조향에 쓴 목표점 x는 self.target_x 에 남는다 (시각화용).
+        조향에 쓴 목표점 x는 self.target_x, 차선을 못 본 시간은 self.lost_time 에 남는다.
         """
+
+        if self.last_valid_time is None:
+            self.last_valid_time = now      # 시작(또는 reset) 시점을 기준으로 센다
 
         centers = []
         weights = []
@@ -159,11 +171,15 @@ class LaneTracker:
         if not seen:
             self.target_x = None
             self.lost_frames += 1
-            if self.lost_frames > self.lost_limit:
+            # µs 단위 반올림: 저장 영상(프레임 번호 ÷ fps)에서 정확히 경계값일 때 부동소수점 오차로 판정이 흔들리지 않게
+            self.lost_time = round(now - self.last_valid_time, 6)
+            if self.lost_time > self.lost_stop_sec:
                 self.steer = 0.0            # 오래 못 보면 직진으로 되돌림
             return centers, None, self.steer, False
 
         self.lost_frames = 0
+        self.lost_time = 0.0
+        self.last_valid_time = now
 
         total = sum(weights)
         target_x = sum(c[0] * w for c, w in zip(centers, weights)) / total

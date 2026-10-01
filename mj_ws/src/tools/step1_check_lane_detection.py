@@ -59,7 +59,7 @@ ROAD_HALF_SMOOTH = 0.1    # 도로 폭 갱신 속도 (0~1, 클수록 빠르게 �
 
 STEER_GAIN = 1.0          # 조향 민감도
 STEER_SMOOTH = 0.35       # 조향값 부드럽게 (0~1, 작을수록 부드러움)
-LOST_LIMIT = 15           # 차선을 못 본 프레임이 이보다 많으면 조향 0으로
+LOST_STOP_SEC = 2.0       # 차선을 못 본 시간이 이보다 길면 조향 0으로 (초, 2단계 설계와 동일)
 
 LANE_CLASSES = ('left_lane', 'right_lane')
 
@@ -185,7 +185,7 @@ class DetectionStats:
             self.miss_runs.append((self._run_start, end - self._run_start))
             self._run_start = None
 
-    def print_summary(self, fps, lost_limit):
+    def print_summary(self, fps, lost_stop_sec):
         self._close_run(self.total)     # 마지막 프레임까지 이어진 구간 마감
 
         def pct(n):
@@ -208,11 +208,11 @@ class DetectionStats:
         print('둘 다 미검출 연속 구간')
         if self.miss_runs:
             start, length = max(self.miss_runs, key=lambda r: r[1])   # 길이가 같으면 먼저 나온 구간
-            long_runs = sum(1 for _, n in self.miss_runs if n >= lost_limit)
+            long_runs = sum(1 for _, n in self.miss_runs if round(n / fps, 6) > lost_stop_sec)
             print(f'  {_pad("최장", 14)}{length:5d} 프레임  '
                   f'(frame {start} 부터, 약 {start / fps:.1f}초)')
-            print(f'  {_pad(f"{lost_limit}프레임 이상", 14)}{long_runs:5d} 회  '
-                  f'(LOST_LIMIT={lost_limit}, 전체 구간 {len(self.miss_runs)}개)')
+            print(f'  {_pad(f"{lost_stop_sec}초 초과", 14)}{long_runs:5d} 회  '
+                  f'(LOST_STOP_SEC={lost_stop_sec}, 전체 구간 {len(self.miss_runs)}개)')
         else:
             print('  없음')
 
@@ -281,7 +281,7 @@ def main():
         road_half_smooth=ROAD_HALF_SMOOTH,
         steer_gain=STEER_GAIN,
         steer_smooth=STEER_SMOOTH,
-        lost_limit=LOST_LIMIT,
+        lost_stop_sec=LOST_STOP_SEC,
     )
 
     stats = DetectionStats()
@@ -309,13 +309,14 @@ def main():
 
         masks = build_masks(result, width, height)
 
-        print(frame_report(stats.total, masks))
+        index = stats.total
+        print(frame_report(index, masks))
         stats.update(masks)
 
         left_mask = pick_main(masks.get('left_lane'))
         right_mask = pick_main(masks.get('right_lane'))
 
-        centers, error, steer, valid = tracker.update(left_mask, right_mask)
+        centers, error, steer, valid = tracker.update(left_mask, right_mask, now=index / fps)
 
         events = []
         if masks.get('crosswalk'):
@@ -337,7 +338,7 @@ def main():
     cv2.destroyAllWindows()
     print(f'저장 완료: {args.output}')
 
-    stats.print_summary(fps, LOST_LIMIT)
+    stats.print_summary(fps, LOST_STOP_SEC)
 
 
 if __name__ == '__main__':
