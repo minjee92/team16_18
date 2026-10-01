@@ -53,8 +53,13 @@
 - SBC: 라즈베리파이 5 (8GB)
 - 구동: 다이나믹셀 XL330-M288-T × 2
   (무부하 103rpm @5V, 정지토크 0.52N·m, 감속비 288.4:1, Velocity Control Mode 지원)
-- 바퀴 지름 50mm (±5mm), 바퀴 간격(트레드) 85mm
-- 최고 속도 약 0.27 m/s (무부하 계산값), 권장 주행 0.10~0.15 m/s
+- 바퀴 지름 54mm, 바퀴 간격(트레드) 96.1mm — pinky_bringup 값
+  (`wheel_radius 0.027`, `wheel_separation 0.0961`, `pinky_bringup/config/pinky_params.yaml`).
+  `cmd_vel` → rpm 변환과 odom 계산에 실제로 쓰이는 값이다
+  - 참고(측정 기준 불명확): 실측 지름 50mm(±5mm), 간격 85mm.
+    트레드는 접지점 중심 사이 거리인데 바퀴 안쪽 면 사이를 쟀을 가능성이 높고(타이어 폭 ~10mm를 더하면 96mm),
+    지름도 고무 타이어 바깥까지 재면 54mm가 나올 수 있다
+- 최고 속도 약 0.28 m/s (bringup 100 rpm 제한 기준. 모터 무부하 103 rpm 이면 0.29 m/s), 권장 주행 0.10~0.15 m/s
 - 센서: RPLiDAR C1, BNO055 9축 IMU, 초음파 US-016, IR TCRT5000
 
 ### 카메라
@@ -67,13 +72,16 @@
 
 ### 차동구동 변환식
 
+**실제 제어 코드가 아니라, "이 속도면 바퀴가 몇 rpm인지" 가늠하는 참고용 계산이다.**
+실제 변환은 bringup 이 한다 (아래 참고).
+
 ```python
 # 차동구동 변환 (Pinky)
 # 부호 규칙: omega > 0 = 반시계 방향 = 좌회전 (ROS REP-103 관례)
 import math
 
-WHEEL_D = 0.05      # 바퀴 지름 [m]
-TREAD   = 0.085     # 바퀴 간격 [m]
+WHEEL_D = 0.054     # 바퀴 지름 [m] (bringup wheel_radius 0.027)
+TREAD   = 0.0961    # 바퀴 간격 [m] (bringup wheel_separation)
 MAX_RPM = 103       # XL330-M288-T 무부하 최고 회전수 (5V)
 
 def to_wheel_rpm(v, omega):
@@ -84,8 +92,12 @@ def to_wheel_rpm(v, omega):
     return v_left * k, v_right * k
 ```
 
-- 위 rpm을 다이나믹셀 Goal Velocity 레지스터 값으로 바꾸는 단위 변환은 별도다. XL330의 단위를 e-manual이나 사용 중인 라이브러리에서 확인해서 쓸 것
-- 부호 규칙(어느 방향이 +인지)은 실제 로봇에서 반드시 검증할 것. 반대면 로봇이 거꾸로 꺾는다
+- **2단계 코드는 `cmd_vel`(m/s, rad/s)만 publish 한다.** 그 뒤 처리는 bringup(`pinky_pro/pinky_bringup`, 제조사 코드)이 모두 한다
+  - 좌우 바퀴 rpm 계산: `bringup.py` 의 `twist_callback` (위와 같은 식, bringup 치수 사용)
+  - 오른쪽 바퀴 부호 반전
+  - 한쪽이라도 100 rpm 을 넘으면 두 바퀴를 같은 비율로 축소
+  - 다이나믹셀 Goal Velocity 단위 변환: `dynamixel_driver.py` 의 `RPM_TO_VALUE_SCALE = 1 / 0.229` (0.229 rpm/단위)
+- 회전 방향(ω > 0 이 실제로 좌회전인지)은 첫 주행에서 눈으로 확인할 것. 반대면 로봇이 거꾸로 꺾는다
 
 ### 실측 필요
 
@@ -94,6 +106,7 @@ def to_wheel_rpm(v, omega):
   (차선을 읽는 샘플 행 y=432/384/336/288(640×480 기준)이 바닥 몇 cm인지도 이 표로 확인한다)
 - **로봇 중심선의 이미지상 x좌표** — 현재 코드는 화면 중앙(x=320)을 로봇 중심선으로 가정한다
   (`src/common/lane_postprocess.py`의 `error` 계산)
+- **바퀴 지름** — bringup 값(54mm)을 채택했다. PLAN.md "2단계 테스트 항목"의 직진 검증으로 확인한다
 
 ## 데이터셋
 

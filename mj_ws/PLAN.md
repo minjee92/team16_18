@@ -81,18 +81,38 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
 
 ### 주행 속도 메모
 
-권장 주행 속도 **0.10~0.15 m/s**. 근거는 CLAUDE.md "하드웨어"의 `to_wheel_rpm`
-(k = 60 / (π × 0.05) ≈ 382 rpm per m/s):
+권장 주행 속도 **0.10~0.15 m/s**. 근거는 CLAUDE.md "하드웨어"의 `to_wheel_rpm` (참고용 계산),
+bringup 치수 기준 (지름 54mm, 간격 96.1mm → k = 60 / (π × 0.054) ≈ 353.7 rpm per m/s):
 
-- 최고 속도 0.27 m/s ← 무부하 최고 103 rpm
-- 직진 0.10 m/s → 38.2 rpm, 0.15 m/s → 57.3 rpm (최고 회전수의 37~56%)
-- 회전 여유: 바깥 바퀴 속도 = v + ω × 0.085 / 2. 현재 `robot/lane_mission_drive.py` 의
+- 최고 속도 0.283 m/s ← bringup 의 100 rpm 제한 (모터 무부하 103 rpm 이면 0.291 m/s)
+- 직진 0.10 m/s → 35.4 rpm, 0.15 m/s → 53.1 rpm (100 rpm 제한의 35~53%)
+- 회전 여유: 바깥 바퀴 속도 = v + ω × 0.0961 / 2. 현재 `robot/lane_mission_drive.py` 의
   `MAX_ANGULAR` 1.5 rad/s 로 최대로 꺾으면
-  v = 0.10 일 때 바깥 바퀴 0.164 m/s (62.5 rpm, 61%), v = 0.15 일 때 0.214 m/s (81.6 rpm, 79%)
-  → 권장 범위 안에서는 최대 조향에도 103 rpm 을 넘지 않는다
+  v = 0.10 일 때 바깥 바퀴 0.172 m/s (60.9 rpm), v = 0.15 일 때 0.222 m/s (78.5 rpm)
+  → 권장 범위 안에서는 최대 조향에도 100 rpm 제한에 걸리지 않는다 (bringup 의 비율 축소가 일어나지 않음)
 - 현재 `BASE_SPEED` 0.10 m/s 는 권장 범위 안이다
 
 ## 2단계 설계
+
+### 제어 방식 (결정)
+
+2단계 코드는 **`cmd_vel`(`linear.x` m/s, `angular.z` rad/s)만 publish 한다.**
+좌우 바퀴 rpm 계산, 오른쪽 바퀴 부호 반전, 100 rpm 비율 제한, 다이나믹셀 단위 변환은 모두 bringup 이 처리한다.
+CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이며 제어 코드에 넣지 않는다.
+
+### 2단계 실행 절차
+
+> **초음파 노드는 bringup 에 들어 있지 않다. 안 띄우면 비상 정지가 조용히 꺼진 채로 주행한다.**
+
+1. `ros2 launch pinky_bringup bringup_robot.launch.xml`
+2. `ros2 run pinky_sensor_adc main_node` ← **필수**. bringup 이 띄우지 않는다
+3. 확인: `ros2 topic hz /us_sensor/range` 가 약 20 Hz 로 나오는지 본 뒤에 다음 단계로 간다
+4. 주행 코드 실행
+
+- 4단계 미션 흐름(localization, `station/mission_gui.py`)은 `robot/lane_mission_drive.py` docstring 의 실행 순서를 따르되,
+  2번(`pinky_sensor_adc`)을 bringup 바로 뒤에 넣는다
+- 비상 정지 설계의 "메시지가 끊기면 정지" 판정이 코드에 들어가면 이 노드를 빠뜨려도 출발하지 않게 된다.
+  **그 전까지는 이 절차가 유일한 안전장치다**
 
 ### 차선 상실 처리 (결정)
 
@@ -155,8 +175,17 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
 - `FRONT_STOP_DISTANCE` 는 상한 약 0.97 m 보다 충분히 작아야 한다. 그 이상이면 항상 정지 상태가 된다
 - 반응 지연: 센서 주기 최대 0.05초 + 메인 루프 한 바퀴(`spin_once()` → `step()`, 최대 0.1초 + 추론 지연).
   0.15 m/s 면 0.15초 동안 약 2.3cm 이동하므로 임계 거리에 이 여유를 포함한다
-- 로봇 실행 순서에 `pinky_sensor_adc` 기동을 추가해야 한다 (bringup 이 띄우지 않음)
+- `pinky_sensor_adc` 는 bringup 이 띄우지 않으므로 따로 실행해야 한다 → 위 "2단계 실행 절차" 2번
 - 해제 조건(거리가 다시 멀어지면 자동 재출발할지, 수동 재개할지)은 미정
+
+### 2단계 테스트 항목
+
+- **직진 검증 (바퀴 지름)** — 1m 직진 명령 후 실제 이동 거리를 줄자로 잰다
+  - odom 거리와 실제 거리가 다르면 bringup 의 `wheel_radius` 를 보정한다:
+    `새 wheel_radius = 0.027 × (실제 거리 ÷ odom 거리)`
+    (bringup odom 거리 = 엔코더 회전수 × 2π × `wheel_radius` 라서 비례 보정이 성립한다)
+  - 직진 중 한쪽으로 휘면 좌우 바퀴 지름 차이를 의심한다
+- **차선 상실 정지 경로** — 1단계 영상에서는 주행 중 한 번도 발동하지 않았다 (위 "차선 상실 처리" 검증 메모)
 
 ## 미뤄둔 것
 
