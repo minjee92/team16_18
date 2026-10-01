@@ -73,6 +73,8 @@ class LaneTracker:
       steer_gain       : 조향 민감도
       steer_smooth     : 조향값 부드럽게 (0~1, 작을수록 부드러움)
       lost_limit       : 차선을 못 본 프레임이 이보다 많으면 조향 0으로
+      steer_d_gain     : 오차 변화량(D항) 가중치. 0이면 D항 없음
+      steer_clip       : 조향값 절댓값 상한. None이면 제한 없음
     """
 
     def __init__(self, width, height,
@@ -82,7 +84,9 @@ class LaneTracker:
                  road_half_smooth=0.1,
                  steer_gain=1.0,
                  steer_smooth=0.35,
-                 lost_limit=15):
+                 lost_limit=15,
+                 steer_d_gain=0.0,
+                 steer_clip=None):
         self.width = width
         self.height = height
         self.rows = [int(height * r) for r in sample_rows]
@@ -91,6 +95,8 @@ class LaneTracker:
         self.steer_gain = steer_gain
         self.steer_smooth = steer_smooth
         self.lost_limit = lost_limit
+        self.steer_d_gain = steer_d_gain
+        self.steer_clip = steer_clip
 
         # 행별 도로 반폭. 한쪽 차선만 보일 때 쓴다
         self.half_width = {
@@ -98,8 +104,16 @@ class LaneTracker:
         }
 
         self.steer = 0.0
+        self.prev_error = 0.0    # D항 계산용 직전 오차
         self.lost_frames = 0
         self.target_x = None     # 마지막 update에서 조향에 쓴 목표점 x (못 봤으면 None)
+
+    def reset(self):
+        """조향 상태를 초기화한다 (교차로 회전 뒤 등). 도로 반폭 추정은 유지한다."""
+        self.steer = 0.0
+        self.prev_error = 0.0
+        self.lost_frames = 0
+        self.target_x = None
 
     def update(self, left_mask, right_mask):
         """
@@ -158,7 +172,14 @@ class LaneTracker:
         # 화면 중심 기준 오차. 양수면 목표가 오른쪽 → 로봇이 왼쪽으로 치우침
         error = (target_x - self.width / 2.0) / (self.width / 2.0)
 
+        derivative = error - self.prev_error
+        self.prev_error = error
+
         raw = self.steer_gain * error
+        if self.steer_d_gain:
+            raw += self.steer_d_gain * derivative
         self.steer += self.steer_smooth * (raw - self.steer)
+        if self.steer_clip is not None:
+            self.steer = max(-self.steer_clip, min(self.steer_clip, self.steer))
 
         return centers, error, self.steer, True
