@@ -21,7 +21,10 @@
 - **후처리 분리 완료** — 검증 기능 보강 + 후처리 분리 (`src/common/lane_postprocess.py`) (`b903714`)
 - **폴더 재편 + --threads** — `src/` 를 common/robot/station/tools/legacy 로 재편, `--threads N` 추가 (`4f9f99a`)
 - **빨간 십자 버그 수정 완료** — 목표점 마커를 `LaneTracker` 의 실제 `target_x` 로 그림 (`71a92f7`)
-- **진행 중** — 2단계 준비
+- **ncnn 모델 경로 수정** — 폴더 이름에 `_ncnn_model` 이 없으면 ultralytics 가 NCNN 으로 인식하지 못해 `best_ncnn_model/` 중첩 복원 (`585947f`)
+- **2단계 준비** — 공통 `LaneTracker` 에 D항·clip·`reset()` 추가 (`7b3d2c9`), 차선 상실을 초 단위로 (`e7b0e54`)
+- **2단계 코드 작성** — `src/robot/step2_lane_follow.py` + `src/robot/drive_control.py`. PC 검증 완료, 로봇 미검증
+- **진행 중** — 2단계 로봇 테스트
 
 ## 1단계 전체 영상 통계
 
@@ -74,10 +77,18 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
 - 이동량 중앙값 9px, 최대 49px (frame 812)
 - 프레임별 데이터: `tmp/marker_diff.csv` (git 제외)
 
-## 현재 작업: 2단계 준비
+## 현재 작업: 2단계 로봇 테스트
 
-2단계(차선 가운데로 주행, `lane_model_ncnn`, 로봇) 착수 전 준비.
-아래 "미뤄둔 것" 중 2단계 항목을 정리한다.
+코드: `src/robot/step2_lane_follow.py` (ROS 노드), `src/robot/drive_control.py` (ROS 무관 판단 로직: `FrontStop`, `LaneFollowController`).
+아래 "2단계 실행 절차" 대로 `--dry-run` 부터 시작하고, "2단계 테스트 항목" 순서로 확인한다.
+
+PC 에서 확인한 것 (로봇에서는 아직 안 돌려 봄):
+
+- 단위 테스트 23개 통과: 초음파 판정(측정 없음·끊김·무효값 −0.03/NaN/inf·0.15 m 경계·latch·재개 거부), 속도/상실 단계 경계(0.5초·2.0초)
+- 저장 영상 재생 (ncnn 320, 영상 시간 기준): 주행 중 상실 구간 frame 955~977(1.15초)에서 감속만, 정지는 영상 끝 벽 구간(frame 1440~)뿐.
+  ncnn 320 은 .pt 640 보다 이 구간을 길게 놓친다 (.pt 는 954~, 15프레임)
+- ROS 연동 (격리 도메인, 영상 입력, 가짜 초음파): 장애물·무효값 → 0.02~0.05초 안에 정지 (추론 루프를 기다리지 않음),
+  초음파 끊김 → 0.38초 안에 정지, 정지 후 Space 전까지 주행 명령 0개, 정지 조건이 남아 있으면 Space 거부, 종료 시 0 명령
 
 ### 주행 속도 메모
 
@@ -107,7 +118,9 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 1. `ros2 launch pinky_bringup bringup_robot.launch.xml`
 2. `ros2 run pinky_sensor_adc main_node` ← **필수**. bringup 이 띄우지 않는다
 3. 확인: `ros2 topic hz /us_sensor/range` 가 약 20 Hz 로 나오는지 본 뒤에 다음 단계로 간다
-4. 주행 코드 실행
+4. `python3 src/robot/step2_lane_follow.py --dry-run` (cmd_vel 없이 판단만 확인) → 이상 없으면 `--dry-run` 없이 실행.
+   Space 로 출발 (초음파가 정상이고 장애물이 없을 때만 받아들임), Enter/ESC 로 종료.
+   로봇에 mj_ws 구조가 없으면 `--model <best_ncnn_model 경로>` 로 모델 위치를 넘긴다 (`src/robot/` 와 `src/common/` 을 함께 복사)
 
 - 4단계 미션 흐름(localization, `station/mission_gui.py`)은 `robot/lane_mission_drive.py` docstring 의 실행 순서를 따르되,
   2번(`pinky_sensor_adc`)을 bringup 바로 뒤에 넣는다
@@ -145,7 +158,7 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 전방 초음파(US-016)로 거리를 재서, **차선 검출과 무관하게** 전방 거리가 임계값 이하이면 즉시 정지한다.
 카메라·추론이 정상이어야 동작하는 차선 상실 타이머보다 확실한 안전장치다.
 
-- 임계 거리는 상수로 뺀다 (예: `FRONT_STOP_DISTANCE`, 단위 m). 값은 미정이며 실측 후 정한다
+- 임계 거리는 상수 `FRONT_STOP_DISTANCE = 0.15` m (결정). 첫 주행 테스트에서 관찰 후 조정
 - 모든 주행 상태(차선 추종, 교차로 진입·회전 포함)보다 우선한다. `control()` 결과와 상관없이
   `send()` 직전에 정지 명령으로 덮어쓰는 위치가 자연스럽다
 - 현재 상태: `lane_mission_drive.py` 는 **초음파를 쓰지 않는다**. 구독은 `/mission/goal_pose`, `/mission/enable`,
@@ -173,12 +186,15 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 - **fail-safe 판정**: 다음 중 하나면 정지한다
   - `range ≤ FRONT_STOP_DISTANCE`
   - `range < min_range` (0.02 m 미만, I2C 실패 시의 −0.03 m 포함). 무효값을 걸러 무시하면 센서 고장 시 비상 정지가 꺼지므로, 무시하지 말고 정지로 취급한다
-  - 마지막 메시지가 일정 시간 이상 오지 않음 (노드 미실행·중단). 제한 시간은 상수로 두고 값은 미정 (갱신 주기 20 Hz = 0.05초 기준으로 정한다)
+  - 마지막 메시지가 일정 시간 이상 오지 않음 (노드 미실행·중단). 제한 시간은 `SONAR_TIMEOUT = 0.3` 초 (센서 주기 0.05초의 6배. 구현 때 정한 값이라 조정 가능)
 - `FRONT_STOP_DISTANCE` 는 상한 약 0.97 m 보다 충분히 작아야 한다. 그 이상이면 항상 정지 상태가 된다
 - 반응 지연: 센서 주기 최대 0.05초 + 메인 루프 한 바퀴(`spin_once()` → `step()`, 최대 0.1초 + 추론 지연).
   0.15 m/s 면 0.15초 동안 약 2.3cm 이동하므로 임계 거리에 이 여유를 포함한다
 - `pinky_sensor_adc` 는 bringup 이 띄우지 않으므로 따로 실행해야 한다 → 위 "2단계 실행 절차" 2번
-- 해제 조건(거리가 다시 멀어지면 자동 재출발할지, 수동 재개할지)은 미정
+- 해제 조건: **수동 재개** (결정). 정지 상태를 유지하다가 Space 를 누르면 재개하되, 그 순간 정지 조건이 하나라도 남아 있으면 거부한다.
+  출발도 같은 방식 (키 입력으로 시작, 초음파 노드가 없으면 출발 불가)
+- 구현: 초음파 콜백은 별도 executor 스레드에서 돌고 걸리는 즉시 0 명령을 낸다. 메인 루프 발행과 같은 lock 으로 묶어
+  정지 직후 주행 명령이 끼어들지 않게 했다. 끊김(timeout)은 콜백이 오지 않으므로 메인 루프에서 판정한다
 
 ### 2단계 테스트 항목
 
@@ -202,8 +218,10 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 | 항목 | 내용 | 언제 |
 |---|---|---|
 | 가까운 행 공백 | 가장 가까운 샘플 행(0.90)에 차선 중앙점이 없는 프레임이 **56%(770/1375)**, 마커가 그려진 프레임 기준. 목표점이 먼 행에 기대는 경우가 많다 | 2단계 속도 설정 시 고려 |
-| 후처리 복제본 | `lane_mission_drive.py` 에 같은 로직의 복사본이 있다. D항(`STEER_D_GAIN`), steer clip, `reset()` 이 추가돼 있어 검증 코드와 동작이 다르다 | 2단계에서 공통 모듈로 통합, 차이는 파라미터로 흡수 |
-| 로봇 배포 경로 | 현재 모든 경로가 `BASE_DIR`(= `mj_ws/`) 기준이다. 로봇에는 이 폴더 구조가 없으므로 `robot/` 코드는 경로를 argparse 나 환경변수로 받아야 한다 | 2단계 설계 시 |
+| 후처리 복제본 | 공통 `LaneTracker` 가 D항·clip·`reset()` 을 파라미터로 지원한다 (`7b3d2c9`, 복사본과 1469프레임 결과 일치 확인). `step2_lane_follow.py` 는 공통 모듈을 쓴다. `lane_mission_drive.py` 는 아직 자체 복사본(프레임 기준 상실)을 쓴다 | 4단계에서 공통 모듈로 교체 |
+| 로봇 배포 경로 | 현재 모든 경로가 `BASE_DIR`(= `mj_ws/`) 기준이다. `step2_lane_follow.py` 는 `--model` 로 모델 경로를 받는다. `lane_mission_drive.py` 는 아직 상수 | 4단계에서 `lane_mission_drive.py` 정리 시 |
+| lane_mission_drive 콜백 지연 | 메인 루프가 `spin_once()` 를 한 번만 부르는데, `spin_once` 는 콜백을 하나만 실행한다. `odom` 이 10 Hz 보다 자주 오면 큐에 쌓여 회전 판단에 오래된 odom 을 쓰게 된다. `step2_lane_follow.py` 는 executor 스레드로 해결 | 4단계에서 같은 방식으로 수정 |
+| step2 LCD 미리보기 | `lane_mission_drive.py` 의 LCD 미리보기를 `step2_lane_follow.py` 에는 넣지 않았다 (터미널 로그만) | 필요하면 2단계 테스트 중 추가 |
 
 ## 코드 배치 원칙
 

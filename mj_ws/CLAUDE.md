@@ -9,7 +9,7 @@
 |---|---|---|
 | `src/common/` | 모델(.pt / ncnn)과 무관한 공통 모듈. `lane_postprocess.py`: 마스크 → 차선 중앙점·조향 계산 | 추적 |
 | `src/tools/` | 개발용 (PC). `step1_check_lane_detection.py`: 저장 영상으로 차선 인식·조향 검증 | 추적 |
-| `src/robot/` | 로봇에서 실행. `lane_mission_drive.py`(ncnn 주행), `model_ncnn.py`(ncnn 로드 테스트) | 추적 |
+| `src/robot/` | 로봇에서 실행. `step2_lane_follow.py`(2단계 차선 주행 노드), `drive_control.py`(ROS 무관 판단 로직: 초음파 비상 정지·속도), `lane_mission_drive.py`(4단계 기반 미션 주행), `model_ncnn.py`(ncnn 로드 테스트) | 추적 |
 | `src/station/` | 관제 PC에서 실행. `mission_gui.py`(맵에서 목표 지점 지정) | 추적 |
 | `src/legacy/` | 더 이상 쓰지 않는 스크립트 (`1_realtime.py`, `2_realtime.py`, `capture.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`) | 추적 |
 | `maps/` | SLAM 맵 (`mission4_3.pgm`, `mission4_3.yaml`) | 추적 |
