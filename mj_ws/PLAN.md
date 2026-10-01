@@ -45,6 +45,33 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
 앞까지 다가간 영상 끝부분이라 화면에 차선이 없다 (frame 1395·1400·1430·1468 육안 확인).
 주행 중 가장 긴 미검출은 frame 955부터 14프레임이다.
 
+### 모델·입력 크기 비교 (.pt / ncnn × 640 / 320)
+
+같은 영상 1469프레임, CONF 0.5, `--threads 4`, PC CPU(i7-1165G7). step1 요약 기준 (`8de7e33`).
+
+| | .pt 640 | .pt 320 | ncnn 320 | ncnn "640" |
+|---|---|---|---|---|
+| left_lane | 76.2% | 76.4% | 76.0% | ncnn 320 과 동일 (320 으로 돎) |
+| right_lane | **61.6%** | 58.5% | 58.7% | 〃 |
+| 좌우 양쪽 다 검출 | **43.8%** | 41.3% | 41.1% | 〃 |
+| crosswalk | 19.1% | 18.0% | 18.0% | 〃 |
+| 둘 다 미검출 | 88프레임 | 94 | 94 | 〃 |
+| 최장 미검출 | 69 (frame 1400~) | 70 (1399~) | 69 (1400~) | 〃 |
+| 프레임당 시간 (그중 추론) | 51.1 ms (48.0) | 22.1 (20.3) | 19.8 (17.8) | 19.0 (17.1) |
+
+결론:
+
+1. **ncnn 은 export 시점 크기(320×320)에 고정된다.** `--imgsz 640` 을 줘도 320 으로만 돌 수 있다.
+   주의할 점: ultralytics 는 첫 predict 에서만 export 크기로 바꾸고 다음 predict 부터 요청 크기를 다시 넣어서,
+   **두 번째 프레임부터 검출이 0 이 된다** (수정 전 step1 에서 1469프레임 중 1프레임만 검출).
+   step1 은 경고 후 고정 크기를 계속 쓰고, step2 는 시작할 때 크기가 다르면 메시지를 내고 종료한다
+2. **변환 손실은 없고, 차이는 해상도 때문이다.** 프레임별 검출 일치율:
+   .pt 320 ↔ ncnn 320 은 클래스별 99.5~99.9% (다른 프레임 최대 7개),
+   .pt 640 ↔ .pt 320 은 96.6~98.8% (320 에서 right_lane 48프레임, crosswalk 17프레임을 놓침)
+3. **640 export 여부는 Pi 에서 320 의 실제 fps 를 잰 뒤 결정한다.** 640 으로 얻는 것은 right_lane +3.1%p 뿐
+   (crosswalk +1.1%p 는 3단계 명분으로도 약함). PC 에서 .pt 640 은 320 의 약 2.3배 느리고 (51.1 vs 22.1 ms),
+   Pi 5 는 PC 보다 2~4배 느릴 것으로 보여 640 은 5~7 fps 가 될 수도 있다 (추정). 아래 "2단계 테스트 항목"의 fps 측정 참고
+
 ## 완료: 후처리 분리 (`b903714`)
 
 1단계와 2단계를 잇는 준비 작업이었다.
@@ -118,14 +145,32 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 1. `ros2 launch pinky_bringup bringup_robot.launch.xml`
 2. `ros2 run pinky_sensor_adc main_node` ← **필수**. bringup 이 띄우지 않는다
 3. 확인: `ros2 topic hz /us_sensor/range` 가 약 20 Hz 로 나오는지 본 뒤에 다음 단계로 간다
-4. `python3 src/robot/step2_lane_follow.py --dry-run` (cmd_vel 없이 판단만 확인) → 이상 없으면 `--dry-run` 없이 실행.
-   Space 로 출발 (초음파가 정상이고 장애물이 없을 때만 받아들임), Enter/ESC 로 종료.
-   로봇에 mj_ws 구조가 없으면 `--model <best_ncnn_model 경로>` 로 모델 위치를 넘긴다 (`src/robot/` 와 `src/common/` 을 함께 복사)
+4. `cd ~/team16_18/mj_ws && python3 src/robot/step2_lane_follow.py --dry-run` (cmd_vel 없이 판단만 확인)
+   → 이상 없으면 `--dry-run` 없이 실행. Space 로 출발 (초음파가 정상이고 장애물이 없을 때만 받아들임), Enter/ESC 로 종료.
+   git clone 이라 로봇에도 같은 폴더 구조가 있으므로 `--model` 없이 기본 경로로 동작한다
 
 - 4단계 미션 흐름(localization, `station/mission_gui.py`)은 `robot/lane_mission_drive.py` docstring 의 실행 순서를 따르되,
   2번(`pinky_sensor_adc`)을 bringup 바로 뒤에 넣는다
-- 비상 정지 설계의 "메시지가 끊기면 정지" 판정이 코드에 들어가면 이 노드를 빠뜨려도 출발하지 않게 된다.
-  **그 전까지는 이 절차가 유일한 안전장치다**
+- 코드에도 막혀 있다 (`c899633`): 이 노드를 빠뜨리면 Space 가 `NO SONAR` 로 거부되고, 주행 중 끊기면 0.3초 뒤 정지한다.
+  그래도 출발 전 3번 확인은 빠뜨리지 않는다
+- 모델 입력 크기가 `INFER_SIZE` 와 다르면 시작할 때 메시지를 내고 종료한다 (exit 2)
+
+### 배포 (git clone)
+
+로봇 주소·경로는 예시다 (`pinky@<로봇 IP>`, `~/team16_18`).
+
+1. 처음 한 번, 로봇에서:
+   ```
+   git clone https://github.com/minjee92/team16_18.git ~/team16_18
+   cd ~/team16_18 && git checkout feat/mj-lane-seg
+   ```
+2. 모델은 git 에 없으므로 PC 에서 rsync 한다 (저장소 루트에서). `best_ncnn_model` 폴더 이름을 그대로 유지할 것:
+   ```
+   rsync -av mj_ws/models/lane_model_ncnn/ pinky@<로봇 IP>:~/team16_18/mj_ws/models/lane_model_ncnn/
+   ```
+3. 코드 수정 후: PC 에서 commit → `git push`, 로봇에서 `cd ~/team16_18 && git pull`.
+   로봇에서 직접 고치면 pull 이 충돌하므로 수정은 PC 에서만 한다. 모델을 바꿨으면 2번을 다시 한다
+- 로봇 파이썬 환경에는 ultralytics, ncnn, picamera2 가 있어야 한다 (`lane_mission_drive.py` 와 같은 환경)
 
 ### 차선 상실 처리 (결정)
 
@@ -198,6 +243,10 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 
 ### 2단계 테스트 항목
 
+- **Pi fps 측정 (640 export 결정용)** — step2 로그의 fps 는 `CONTROL_HZ`(10)에 묶여 있어 추론 속도 자체를 보여주지 않는다.
+  Pi 에서 step1 을 화면 없이 돌려 "추론 시간" 요약을 본다 (입력 영상도 rsync 필요):
+  `python3 src/tests/headless_run.py src/tools/step1_check_lane_detection.py --model models/lane_model_ncnn/best_ncnn_model --imgsz 320 --max-frames 300 --output /tmp/fps.mp4`
+  → ms/프레임을 기록하고, 640 으로 바꿨을 때 남는 fps 를 판단한다
 - **직진 검증 (바퀴 지름)** — 1m 직진 명령 후 실제 이동 거리를 줄자로 잰다
   - odom 거리와 실제 거리가 다르면 bringup 의 `wheel_radius` 를 보정한다:
     `새 wheel_radius = 0.027 × (실제 거리 ÷ odom 거리)`
@@ -219,13 +268,12 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 |---|---|---|
 | 가까운 행 공백 | 가장 가까운 샘플 행(0.90)에 차선 중앙점이 없는 프레임이 **56%(770/1375)**, 마커가 그려진 프레임 기준. 목표점이 먼 행에 기대는 경우가 많다 | 2단계 속도 설정 시 고려 |
 | 후처리 복제본 | 공통 `LaneTracker` 가 D항·clip·`reset()` 을 파라미터로 지원한다 (`7b3d2c9`, 복사본과 1469프레임 결과 일치 확인). `step2_lane_follow.py` 는 공통 모듈을 쓴다. `lane_mission_drive.py` 는 아직 자체 복사본(프레임 기준 상실)을 쓴다 | 4단계에서 공통 모듈로 교체 |
-| 로봇 배포 경로 | 현재 모든 경로가 `BASE_DIR`(= `mj_ws/`) 기준이다. `step2_lane_follow.py` 는 `--model` 로 모델 경로를 받는다. `lane_mission_drive.py` 는 아직 상수 | 4단계에서 `lane_mission_drive.py` 정리 시 |
 | lane_mission_drive 콜백 지연 | 메인 루프가 `spin_once()` 를 한 번만 부르는데, `spin_once` 는 콜백을 하나만 실행한다. `odom` 이 10 Hz 보다 자주 오면 큐에 쌓여 회전 판단에 오래된 odom 을 쓰게 된다. `step2_lane_follow.py` 는 executor 스레드로 해결 | 4단계에서 같은 방식으로 수정 |
 | step2 LCD 미리보기 | `lane_mission_drive.py` 의 LCD 미리보기를 `step2_lane_follow.py` 에는 넣지 않았다 (터미널 로그만) | 필요하면 2단계 테스트 중 추가 |
 
 ## 코드 배치 원칙
 
-실행 위치로 나눈다. 로봇에 배포할 때 해당 폴더만 복사하면 되도록.
+실행 위치로 나눈다. 배포는 저장소 전체를 git clone 하지만 ("2단계 설계 > 배포"), 어느 코드가 어디서 도는지 폴더로 드러나게 한다.
 
 ```
 src/
