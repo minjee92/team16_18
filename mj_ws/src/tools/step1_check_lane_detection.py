@@ -18,6 +18,7 @@
     python3 src/tools/step1_check_lane_detection.py --input 0          # 웹캠
     python3 src/tools/step1_check_lane_detection.py --max-frames 150   # 앞 150프레임만
     python3 src/tools/step1_check_lane_detection.py --threads 4        # torch CPU 스레드 수
+    python3 src/tools/step1_check_lane_detection.py --model models/lane_model_ncnn/best_ncnn_model --imgsz 320
 """
 
 import argparse
@@ -46,7 +47,7 @@ MODEL_PATH = str(BASE_DIR / 'models' / '260928_yolon_best.pt')
 OUTPUT_VIDEO = str(BASE_DIR / 'outputs' / 'result_step1_check_lane_detection.mp4')
 
 CONF = 0.5
-INFER_SIZE = 640          # 로봇에서는 320으로 낮출 값
+INFER_SIZE = 640          # 로봇에서는 320으로 낮출 값 (export 된 모델은 export 크기로 고정됨)
 
 # 차선을 읽을 높이들 (화면 높이 대비 비율). 아래쪽이 로봇에 가까움
 SAMPLE_ROWS = (0.90, 0.80, 0.70, 0.60)
@@ -217,6 +218,33 @@ class DetectionStats:
             print('  없음')
 
 
+def check_imgsz(model, requested):
+    """
+    첫 추론 직후 호출. 이후 추론에 쓸 입력 크기를 돌려준다.
+
+    export 된 고정 크기 모델(ncnn 등)은 첫 predict 에서만 export 크기로 덮어쓰이고, 다음 predict 부터는
+    요청한 크기가 다시 적용되어 엉뚱한 크기로 들어간다 (검출이 사라짐). 그래서 고정 크기를 계속 쓴다.
+    """
+    used = model.predictor.args.imgsz
+    used = list(used) if isinstance(used, (list, tuple)) else [used, used]
+    if used != [requested, requested]:
+        print(f'주의: 이 모델은 입력 크기 {used[1]}x{used[0]} 로 고정되어 있어 --imgsz {requested} 대신 '
+              f'{used[1]}x{used[0]} 로 추론합니다 (export 메타데이터)')
+        return used
+    print(f'입력 크기: {requested}')
+    return requested
+
+
+def print_timing(speeds):
+    """프레임당 추론 시간 평균 (ultralytics 가 재는 전처리 / 추론 / 후처리)."""
+    if not speeds:
+        return
+    pre, inf, post = (sum(s[k] for s in speeds) / len(speeds)
+                      for k in ('preprocess', 'inference', 'postprocess'))
+    print(f'추론 시간 (첫 프레임 제외 {len(speeds)}개 평균)')
+    print(f'  전처리 {pre:.1f} / 추론 {inf:.1f} / 후처리 {post:.1f} ms  → 합계 {pre + inf + post:.1f} ms/프레임')
+
+
 # ------------------------------ 메인 ------------------------------
 
 def parse_args():
@@ -227,6 +255,10 @@ def parse_args():
                         help='결과 영상 경로 (기본: %(default)s)')
     parser.add_argument('--max-frames', type=int, default=None,
                         help='이 프레임 수만 처리하고 종료 (기본: 제한 없음)')
+    parser.add_argument('--model', default=MODEL_PATH,
+                        help='모델 경로 (.pt 파일 또는 *_ncnn_model 폴더, 기본: %(default)s)')
+    parser.add_argument('--imgsz', type=int, default=INFER_SIZE,
+                        help='추론 입력 크기 (기본: %(default)s). export 된 모델은 export 크기로 고정된다')
     parser.add_argument('--threads', type=int, default=None,
                         help='첫 추론 뒤 torch CPU 스레드 수로 설정 '
                              '(기본: ultralytics 기본값 유지)')
@@ -246,7 +278,8 @@ def main():
 
     args = parse_args()
 
-    model = YOLO(MODEL_PATH)
+    model = YOLO(args.model, task='segment')
+    print('모델:', args.model)
     print('클래스:', model.names)
 
     missing = [c for c in LANE_CLASSES if c not in model.names.values()]
@@ -285,6 +318,8 @@ def main():
     )
 
     stats = DetectionStats()
+    speeds = []               # 프레임별 ultralytics speed (ms), 첫 프레임(워밍업) 제외
+    imgsz = args.imgsz        # 첫 추론 뒤 모델 고정 크기로 바뀔 수 있음 (check_imgsz)
 
     print(f'{width}x{height} @ {fps:.1f}fps   종료: q')
 
@@ -298,8 +333,13 @@ def main():
             break
 
         result = model.predict(
-            source=frame, conf=CONF, imgsz=INFER_SIZE, verbose=False
+            source=frame, conf=CONF, imgsz=imgsz, verbose=False
         )[0]
+
+        if stats.total == 0:
+            imgsz = check_imgsz(model, args.imgsz)
+        else:
+            speeds.append(result.speed)
 
         if args.threads is not None and stats.total == 0:
             # ultralytics가 첫 predict에서 torch 스레드를 min(8, 코어-1)로 덮어쓰므로 그 뒤에 설정
@@ -339,6 +379,7 @@ def main():
     print(f'저장 완료: {args.output}')
 
     stats.print_summary(fps, LOST_STOP_SEC)
+    print_timing(speeds)
 
 
 if __name__ == '__main__':
