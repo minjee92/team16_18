@@ -31,14 +31,17 @@
 
 | 경로 | 용도 | 쓰는 스크립트 |
 |---|---|---|
-| `models/lane_model_ncnn/` | 로봇 실주행용 (NCNN, 320×320) | `robot/lane_mission_drive.py`, `robot/model_ncnn.py` |
+| `models/lane_model_ncnn/best_ncnn_model/` | 로봇 실주행용 (NCNN, 320×320) | `robot/lane_mission_drive.py`, `robot/model_ncnn.py` |
 | `models/260928_yolon_best.pt` | 저장 영상 검증용 (PC) | `tools/step1_check_lane_detection.py` (legacy의 `2_realtime.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`도 이 모델을 가리킴) |
 | `tmp/legacy_models/*` | legacy (사용 안 함) | `legacy/1_realtime.py` (`old_pt/pouch_best.pt`) |
 
 - ncnn 모델은 `260928_yolon_best.pt`에서 export했다
   (`models/lane_model_ncnn/best.pt`와 sha256 동일 확인).
   그래서 검증용 pt와 주행용 ncnn은 같은 가중치다.
-- ultralytics NCNN은 폴더 경로를 받으므로 `MODEL_PATH`는 `models/lane_model_ncnn`을 가리킨다.
+- ultralytics NCNN은 폴더 경로를 받고, **폴더 이름에 `_ncnn_model` 이 들어 있어야 NCNN 으로 인식한다**
+  (`ultralytics/nn/autobackend.py` 의 형식 판별). 그래서 `MODEL_PATH`는 `models/lane_model_ncnn/best_ncnn_model`을 가리킨다.
+  **이 폴더 이름을 바꾸지 말 것** — 바꾸면 "not a supported model format" 오류로 로드되지 않는다.
+  `models/lane_model_ncnn/` 에는 export 원본 `best.pt` 와 `best_ncnn_model/`(metadata.yaml, model.ncnn.bin, model.ncnn.param)이 있다.
 - 모델 경로는 각 스크립트 상단의 `MODEL_PATH` 상수 한 줄로 정해진다. 모델을 바꿀 때는 그 줄만 고친다.
 
 ## 출력 파일명 규칙

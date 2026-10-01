@@ -4,7 +4,7 @@ import torch
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent   # mj_ws/
-MODEL_DIR = BASE_DIR / 'models' / 'lane_model_ncnn'
+MODEL_DIR = BASE_DIR / 'models' / 'lane_model_ncnn' / 'best_ncnn_model'
 
 def test_inference():
     torch.manual_seed(0)
