@@ -66,7 +66,8 @@ log_path = tempfile.NamedTemporaryFile(prefix='step2_e2e_', suffix='.log', delet
 log = open(log_path, 'w')
 master, slave = pty.openpty()
 proc = subprocess.Popen(
-    [sys.executable, '-u', str(testlib.SRC_DIR / 'robot' / 'step2_lane_follow.py'), '--video', str(testlib.VIDEO)],
+    [sys.executable, '-u', str(testlib.SRC_DIR / 'robot' / 'step2_lane_follow.py'), '--video', str(testlib.VIDEO),
+     '--out-dir', tempfile.mkdtemp(prefix='step2_e2e_out_')],   # 주행 로그 CSV 가 outputs/ 에 쌓이지 않게
     stdin=slave, stdout=log, stderr=subprocess.STDOUT, cwd=str(testlib.MJ_DIR))
 os.close(slave)
 

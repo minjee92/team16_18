@@ -148,6 +148,10 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 4. `cd ~/team16_18/mj_ws && python3 src/robot/step2_lane_follow.py --dry-run` (cmd_vel 없이 판단만 확인)
    → 이상 없으면 `--dry-run` 없이 실행. Space 로 출발 (초음파가 정상이고 장애물이 없을 때만 받아들임), Enter/ESC 로 종료.
    git clone 이라 로봇에도 같은 폴더 구조가 있으므로 `--model` 없이 기본 경로로 동작한다
+5. 주행 기록: 프레임별 CSV 는 항상 `mj_ws/outputs/result_step2_lane_follow_<시각>.csv` 에 남는다
+   (좌/우 차선 검출·conf, 샘플 행별 lx/rx/중앙점/도로 반폭, target_x, steer, v/w, 초음파).
+   마스크 오버레이 영상도 필요하면 `--record` (같은 이름의 .mp4, 화면의 step 번호 = CSV 의 step).
+   주행 후 PC 로 가져오기: `rsync -av pinky@<로봇 IP>:~/team16_18/mj_ws/outputs/ mj_ws/outputs/`
 
 - 4단계 미션 흐름(localization, `station/mission_gui.py`)은 `robot/lane_mission_drive.py` docstring 의 실행 순서를 따르되,
   2번(`pinky_sensor_adc`)을 bringup 바로 뒤에 넣는다
@@ -243,6 +247,10 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 
 ### 2단계 테스트 항목
 
+- **`--record` 부하 확인** — 녹화는 별도 스레드라 큐가 차면 프레임을 버리고 제어는 계속하지만, 그리기가 CPU·GIL 을 나눠 써서
+  제어 루프도 느려진다 (PC, 제한 없이 돌렸을 때 스텝당 17 → 23 ms). Pi 에서 `--record` 유무로 CSV 의 `t` 간격과
+  종료 시 출력되는 "버림" 수를 비교해, 10 Hz 를 지키는지 확인한다. 못 지키면 녹화 방식을 다시 정한다
+  (후보: 녹화를 별도 프로세스로 분리, 녹화 해상도 축소, 녹화는 dry-run 에서만)
 - **Pi fps 측정 (640 export 결정용)** — step2 로그의 fps 는 `CONTROL_HZ`(10)에 묶여 있어 추론 속도 자체를 보여주지 않는다.
   Pi 에서 step1 을 화면 없이 돌려 "추론 시간" 요약을 본다 (입력 영상도 rsync 필요):
   `python3 src/tests/headless_run.py src/tools/step1_check_lane_detection.py --model models/lane_model_ncnn/best_ncnn_model --imgsz 320 --max-frames 300 --output /tmp/fps.mp4`

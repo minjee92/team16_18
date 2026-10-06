@@ -7,7 +7,7 @@
 
 | 경로 | 내용 | git |
 |---|---|---|
-| `src/common/` | 모델(.pt / ncnn)과 무관한 공통 모듈. `lane_postprocess.py`: 마스크 → 차선 중앙점·조향 계산 | 추적 |
+| `src/common/` | 모델(.pt / ncnn)과 무관한 공통 모듈. `lane_postprocess.py`: 마스크 → 차선 중앙점·조향 계산, `lane_draw.py`: 추적 결과 그리기 (step1 결과 영상·step2 주행 기록 공용) | 추적 |
 | `src/tools/` | 개발용 (PC). `step1_check_lane_detection.py`: 저장 영상으로 차선 인식·조향 검증 | 추적 |
 | `src/robot/` | 로봇에서 실행. `step2_lane_follow.py`(2단계 차선 주행 노드), `drive_control.py`(ROS 무관 판단 로직: 초음파 비상 정지·속도), `lane_mission_drive.py`(4단계 기반 미션 주행), `model_ncnn.py`(ncnn 로드 테스트) | 추적 |
 | `src/station/` | 관제 PC에서 실행. `mission_gui.py`(맵에서 목표 지점 지정) | 추적 |
@@ -47,6 +47,9 @@
 ## 출력 파일명 규칙
 
 `outputs/result_<스크립트명>.mp4` (예: `step1_check_lane_detection.py` → `outputs/result_step1_check_lane_detection.mp4`)
+
+주행 기록(step2)은 매번 남겨야 하므로 실행 시각을 붙인다:
+`outputs/result_<스크립트명>_<YYYYmmdd_HHMMSS>.csv` (프레임별 로그, 항상) / `.mp4` (오버레이 영상, `--record` 일 때만). 두 파일은 이름이 같다
 
 ## 하드웨어
 
