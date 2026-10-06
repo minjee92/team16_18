@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>pinky_autonomous</name>
+  <version>0.0.0</version>
+  <description>Pinky Pro 차선 인식(YOLO NCNN) 기반 자율주행: 차선 추종, 횡단보도·교차로 처리, 초음파 장애물 정지, LED 상태 표시, 출발점 복귀(SLAM)</description>
+  <maintainer email="tjkoobro@gmail.com">tkoo</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>pinky_interfaces</depend>
+  <depend>tf2_ros</depend>
+  <depend>nav_msgs</depend>
+  <exec_depend>pinky_navigation</exec_depend>
+  <exec_depend>pinky_sensor_adc</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

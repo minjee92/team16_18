@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+build/
+install/
+log/
+.vscode/
+*.swp
+
+# 학습 모델(NCNN)·주행 영상·녹화본은 저장소에 넣지 않는다 (README 의 "모델" 참고)
+best_ncnn_model/
+*_ncnn_model/
+*.pt
+*.onnx
+*.mp4
+*.avi

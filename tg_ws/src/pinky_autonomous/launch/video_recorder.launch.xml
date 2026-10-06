@@ -1,0 +1,20 @@
+<?xml version='1.0'?>
+<!--
+  영상 저장 launch 파일 (관제PC / Ubuntu 24.04에서 실행)
+
+  Pinky Pro와 같은 ROS2 도메인(동일 네트워크)에 있어야 함.
+  저장 경로: ~/pinky_recordings/  (save_dir 인자로 변경 가능)
+-->
+<launch>
+    <arg name="save_dir" default="$(env HOME)/pinky_recordings"/>
+    <arg name="fps"      default="10.0"/>
+    <arg name="width"    default="640"/>
+    <arg name="height"   default="480"/>
+
+    <node pkg="pinky_autonomous" exec="video_recorder" name="video_recorder" output="screen">
+        <param name="save_dir" value="$(var save_dir)"/>
+        <param name="fps"      value="$(var fps)"/>
+        <param name="width"    value="$(var width)"/>
+        <param name="height"   value="$(var height)"/>
+    </node>
+</launch>
