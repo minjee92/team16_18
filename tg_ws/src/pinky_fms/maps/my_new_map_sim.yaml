@@ -1,0 +1,7 @@
+image: my_new_map_sim.pgm
+mode: trinary
+resolution: 0.050
+origin: [-4.610, -3.109, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

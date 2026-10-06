@@ -1,0 +1,25 @@
+<?xml version='1.0' ?>
+<!--
+  실물 지도에서 만든 Gazebo 월드를 띄운다 (한 번만). 로봇은 sim_robot.launch.xml 로 따로 넣는다.
+    ros2 launch pinky_fms_sim sim_world.launch.xml [world:=.../mission4_3_clean_1cm.sdf] [gui:=true]
+  월드 파일은 tools/map_to_world.py 가 map.yaml 에서 만든다 (지도 좌표 = 월드 좌표).
+-->
+<launch>
+    <arg name="world" default="$(find-pkg-share pinky_fms_sim)/worlds/mission4_3_clean_1cm.sdf"/>
+    <arg name="gui" default="true"/>
+    <arg name="headless_rendering" default="false"/>   <!-- 화면 없이 라이다 렌더링(EGL). GUI 없이 돌릴 때 -->
+    <let name="hr" value="--headless-rendering" if="$(var headless_rendering)"/>
+    <let name="hr" value="" unless="$(var headless_rendering)"/>
+    <set_env name="GZ_SIM_RESOURCE_PATH" value="$(find-pkg-share pinky_description)/../:$(find-pkg-share pinky_gz_sim)/models"/>
+
+    <include file="$(find-pkg-share ros_gz_sim)/launch/gz_sim.launch.py">
+        <arg name="gz_args" value="-r -s -v3 $(var hr) $(var world)"/>
+        <arg name="on_exit_shutdown" value="true"/>
+    </include>
+    <include file="$(find-pkg-share ros_gz_sim)/launch/gz_sim.launch.py" if="$(var gui)">
+        <arg name="gz_args" value="-g -v2"/>
+    </include>
+    <!-- /clock 은 월드에서 한 번만 -->
+    <node pkg="ros_gz_bridge" exec="parameter_bridge" name="clock_bridge" output="screen"
+          args="/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"/>
+</launch>

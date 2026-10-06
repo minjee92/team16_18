@@ -1,0 +1,30 @@
+<?xml version='1.0' ?>
+<!--
+  pinky_autonomous/autonomous_drive.launch.xml 을 수정 없이 namespace 안에서 실행하는 래퍼.
+  원본이 /map 을 절대경로로 구독하므로 namespace 안의 map 으로 리맵한다.
+    ros2 launch pinky_fms_bringup robot_autonomous.launch.xml namespace:=amr_01
+  (Nav2 가 실행 중이면 cmd_vel 이 겹치므로 먼저 종료할 것)
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <arg name="model_path" default="/home/pinky/yolo_drive/best_ncnn_model"/>
+    <arg name="drive_speed" default="0.15"/>
+    <arg name="enable_return_home" default="true"/>
+    <arg name="run_slam_on_robot" default="false"/>
+
+    <group>
+        <push-ros-namespace namespace="$(var namespace)"/>
+        <!-- 안쪽 launch(upload_robot 등)가 같은 이름의 namespace 인자를 다시 적용하지 않도록 비운다 -->
+        <let name="namespace" value=""/>
+        <set_remap from="/tf" to="tf"/>
+        <set_remap from="/tf_static" to="tf_static"/>
+        <set_remap from="/map" to="map"/>
+
+        <include file="$(find-pkg-share pinky_autonomous)/launch/autonomous_drive.launch.xml">
+            <arg name="model_path" value="$(var model_path)"/>
+            <arg name="drive_speed" value="$(var drive_speed)"/>
+            <arg name="enable_return_home" value="$(var enable_return_home)"/>
+            <arg name="run_slam_on_robot" value="$(var run_slam_on_robot)"/>
+        </include>
+    </group>
+</launch>

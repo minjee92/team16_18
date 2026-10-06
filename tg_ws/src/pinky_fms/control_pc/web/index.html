@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise FMS Dashboard (Pro)</title>
+    <!-- Fonts, Icons, Tailwind, Chart.js, Roslib -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { slate: { 850: '#151e2e', 900: '#0f172a', 950: '#020617' } }
+                }
+            }
+        }
+    </script>
+    <style>
+        .map-grid {
+            background-color: #0f172a; background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-300 font-sans h-screen flex overflow-hidden relative">
+
+    <!-- 사이드바 -->
+    <aside class="w-16 bg-slate-900 border-r border-slate-800 flex flex-col items-center py-6 gap-8 z-10 shadow-xl">
+        <div class="text-cyan-500 text-2xl mb-4"><i class="fa-solid fa-robot"></i></div>
+        <button class="text-cyan-400"><i class="fa-solid fa-border-all text-xl"></i></button>
+        <button class="text-slate-400 hover:text-cyan-400"><i class="fa-solid fa-map-location-dot text-xl"></i></button>
+        <button class="text-slate-400 hover:text-cyan-400"><i class="fa-solid fa-list-check text-xl"></i></button>
+        <div class="mt-auto text-slate-500 hover:text-white cursor-pointer"><i class="fa-solid fa-gear text-xl"></i></div>
+    </aside>
+
+    <!-- 메인 컨텐츠 -->
+    <main class="flex-1 flex flex-col h-full relative">
+        <!-- 헤더 -->
+        <header class="h-16 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6 z-10">
+            <div><h1 class="text-lg font-bold text-white">Fleet Command Center</h1><p class="text-xs text-slate-400">Pinky FMS</p></div>
+            <div class="flex items-center gap-6">
+                <div class="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
+                    <span id="status-dot" class="relative flex h-3 w-3"><span class="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>
+                    <span id="connection-status" class="text-xs font-semibold text-slate-300">ROS Offline</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- KPI 카드 -->
+        <div class="grid grid-cols-4 gap-4 p-4 z-10">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex justify-between"><div><p class="text-xs text-slate-400 mb-1">Total Fleet</p><h2 class="text-2xl font-bold text-white"><span id="kpi-total">0</span> <span class="text-sm text-slate-500">Units</span></h2></div><div class="bg-slate-800 p-3 rounded-lg text-blue-400"><i class="fa-solid fa-truck-fast"></i></div></div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex justify-between"><div><p class="text-xs text-slate-400 mb-1">Active / Idle</p><h2 class="text-2xl font-bold text-emerald-400"><span id="kpi-active">0</span> <span class="text-lg text-slate-500">/ <span id="kpi-idle">0</span></span></h2></div><div class="bg-slate-800 p-3 rounded-lg text-emerald-400"><i class="fa-solid fa-play"></i></div></div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex justify-between"><div><p class="text-xs text-slate-400 mb-1">System Alerts</p><h2 class="text-2xl font-bold text-rose-500"><span id="kpi-alerts">0</span> <span id="kpi-alerts-label" class="text-sm text-slate-500">Clear</span></h2></div><div class="bg-slate-800 p-3 rounded-lg text-rose-500"><i class="fa-solid fa-shield-check"></i></div></div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex justify-between"><div><p class="text-xs text-slate-400 mb-1">Avg Heartbeat Age</p><h2 class="text-2xl font-bold text-white"><span id="kpi-hb">--</span> <span class="text-sm text-slate-500">s</span></h2></div><div class="bg-slate-800 p-3 rounded-lg text-amber-400"><i class="fa-solid fa-network-wired"></i></div></div>
+        </div>
+
+        <!-- 맵 & 로봇 리스트 -->
+        <div class="flex-1 flex overflow-hidden px-4 pb-4 gap-4 z-10 relative">
+            
+            <!-- 🌟 왼쪽: 글로벌 맵 영역 -->
+            <div class="flex-1 rounded-xl border border-slate-800 relative shadow-inner overflow-hidden flex flex-col bg-slate-950">
+                <!-- 툴바 -->
+                <div class="flex items-center gap-2 px-3 py-2 border-b border-slate-800 bg-slate-900 text-xs z-20">
+                    <i class="fa-solid fa-map text-cyan-400"></i>
+                    <select id="map-select" onchange="selectMap(this.value)" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200"></select>
+                    <button onclick="document.getElementById('map-upload-yaml').click()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-2 py-1 rounded" title="map.yaml 과 이미지(pgm/png)를 함께 선택"><i class="fa-solid fa-upload mr-1"></i>맵 업로드</button>
+                    <input id="map-upload-yaml" type="file" accept=".yaml,.yml,.pgm,.png" multiple class="hidden" onchange="uploadMap(this)">
+                    <span class="mx-1 text-slate-700">|</span>
+                    <button id="btn-auto-tool" onclick="startAutoTool()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-2 py-1 rounded" title="로봇을 고르지 않고, 대기(IDLE) 중인 가장 가까운 로봇이 자동으로 가도록 목적지를 찍습니다"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>자동 배정 주행</button>
+                    <span id="map-guide" class="text-slate-500 hidden xl:inline">맵을 클릭(드래그: 방향)하면 <b class="text-slate-300">어느 로봇의 목표로 지정할지</b> 고를 수 있습니다 · 카드: 초기위치 → 목표지정 → 주행</span>
+                    <span id="map-tool-hint" class="hidden text-amber-300 bg-amber-500/10 border border-amber-700 rounded px-2 py-0.5"><b id="tool-name"></b> <span id="tool-desc"></span> · <button id="tool-coord" onclick="openCoordInput()" class="underline">좌표 입력</button> · <button onclick="cancelMapTool()" class="underline">취소(Esc)</button></span>
+                    <span id="map-cursor" class="ml-auto font-mono text-slate-500">x --, y --</span>
+                </div>
+                <div id="map-wrap" class="flex-1 relative min-h-0">
+                    <canvas id="map-canvas" class="absolute inset-0 w-full h-full cursor-crosshair"></canvas>
+                    <p id="map-empty" class="absolute inset-0 flex items-center justify-center text-slate-600 text-sm pointer-events-none">맵이 없습니다. 위에서 map.yaml + 이미지를 업로드하세요.</p>
+                </div>
+            </div>
+
+            <!-- 🌟 오른쪽: 로봇 Fleet 리스트 (수정된 부분) -->
+            <div class="w-[420px] bg-slate-900 border border-slate-800 rounded-xl flex flex-col overflow-hidden shadow-lg">
+                <div class="p-4 border-b border-slate-800 bg-slate-850 flex justify-between items-center">
+                    <div class="flex items-center gap-2"><h2 class="font-bold text-white">Active Fleet</h2><button id="btn-add-robot" onclick="openAddModal()" class="bg-cyan-700 hover:bg-cyan-600 text-white text-[11px] font-bold px-2.5 py-1 rounded"><i class="fa-solid fa-plus mr-1"></i>로봇 추가</button></div><span id="backend-status" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">Backend: --</span>
+                </div>
+                
+                <!-- 글로벌 커맨드 버튼 영역 -->
+                <div class="px-4 pt-4 flex gap-2">
+                    <button id="btn-estop" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-2 rounded-lg font-bold text-xs shadow-lg shadow-rose-900/50 transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-triangle-exclamation"></i> GLOBAL E-STOP
+                    </button>
+                    <button id="btn-return" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-charging-station"></i> RETURN DOCK
+                    </button>
+                </div>
+
+                <!-- 대기 중인 목표를 한꺼번에 출발 -->
+                <div class="px-4 pt-2 flex gap-2">
+                    <button id="btn-start-all" onclick="startAllStaged()" disabled class="flex-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5" title="맵에서 로봇을 골라 목표를 찍어 두면(대기), 한꺼번에 출발합니다">
+                        <i class="fa-solid fa-play"></i> 전체 주행 시작 <span id="start-all-count">(0)</span>
+                    </button>
+                    <button id="btn-clear-staged" onclick="clearAllStaged()" disabled class="bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 px-3 py-2 rounded-lg font-bold text-xs transition-all" title="대기 중인 목표를 모두 지움">목표 해제</button>
+                </div>
+
+                <!-- 빈 바구니: 자바스크립트가 로봇 리스트를 자동으로 채워넣습니다 -->
+                <ul id="fleet-container" class="flex-1 overflow-y-auto p-4 space-y-3 mt-1">
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <!-- 🟢 [모달 1] 네트워크 통신 진단 팝업 -->
+    <div id="diag-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[700px] overflow-hidden transform scale-95 transition-transform duration-300" id="diag-modal-content">
+            <div class="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+                <div>
+                    <h2 class="text-lg font-bold text-white"><i class="fa-solid fa-tower-broadcast text-cyan-400 mr-2"></i>Network Diag: <span id="diag-robot-name">AMR-01</span></h2>
+                    <p class="text-xs text-slate-400 mt-1">DDS 탐색: <span id="diag-dds" class="text-emerald-400 font-mono bg-slate-800 px-1 rounded">--</span> · ping = 관제PC→로봇 IP(ON 이후) · heartbeat = ROS 데이터 마지막 수신 후 경과 시간</p>
+                </div>
+                <button onclick="closeDiagModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-4 gap-4 mb-3">
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 text-center"><p class="text-[10px] text-slate-400 uppercase">State</p><h3 class="text-xl font-bold text-white mt-1" id="diag-state">--</h3></div>
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 text-center"><p class="text-[10px] text-slate-400 uppercase">Ping RTT (last / avg)</p><h3 class="text-lg font-bold text-white mt-1.5" id="diag-ping">-- ms</h3></div>
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 text-center"><p class="text-[10px] text-slate-400 uppercase">Ping Loss (60s)</p><h3 class="text-xl font-bold text-white mt-1" id="diag-loss">--</h3></div>
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 text-center"><p class="text-[10px] text-slate-400 uppercase">ROS Heartbeat</p><h3 class="text-xl font-bold text-white mt-1" id="diag-avg-rtt">-- s</h3></div>
+                </div>
+                <div id="diag-verdict" class="mb-4 text-xs rounded-lg px-3 py-2 border bg-slate-800 border-slate-700 text-slate-400">진단: --</div>
+                <div class="bg-slate-850 p-4 rounded-lg border border-slate-800">
+                    <h4 class="text-xs text-slate-400 mb-2">Ping RTT (ms) / ROS Heartbeat Age (s) - 최근 60초</h4>
+                    <div class="relative h-48 w-full"><canvas id="networkChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🟢 [모달 2] 라이브 카메라 팝업 -->
+    <div id="cam-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[800px] overflow-hidden transform scale-95 transition-transform duration-300" id="cam-modal-content">
+            <div class="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+                <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-video text-rose-500 mr-2 animate-pulse"></i>Live FPV Stream: <span id="cam-robot-name">AMR-01</span></h2>
+                <button onclick="closeCamModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-1 bg-black relative h-[450px] flex items-center justify-center">
+                <div class="absolute top-4 left-4 flex flex-col gap-1 z-10">
+                    <span class="bg-black/60 text-emerald-400 text-[10px] font-mono px-2 py-0.5 rounded">FPS: 30.0</span>
+                </div>
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
+                    <div class="w-px h-full bg-cyan-500"></div><div class="h-px w-full bg-cyan-500 absolute"></div>
+                    <div class="w-12 h-12 border-2 border-cyan-500 rounded-full absolute"></div>
+                </div>
+                <i class="fa-solid fa-warehouse text-[8rem] text-slate-800"></i>
+                <p class="absolute bottom-4 text-slate-600 text-xs font-mono tracking-widest">Waiting for ImageTransport...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🟢 [모달 3] 교착상태(Deadlock) 알림 팝업 -->
+    <div id="deadlock-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div class="bg-slate-800 border border-rose-500 rounded-xl p-6 w-[400px] shadow-2xl shadow-rose-900/30">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 rounded-full bg-rose-500/20 flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-skull-crossbones text-rose-500 text-2xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-white font-bold text-lg">Deadlock Detected</h3>
+                    <p id="deadlock-msg" class="text-slate-400 text-sm mt-1">경로 충돌이 발생했습니다.</p>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button onclick="document.getElementById('deadlock-modal').classList.add('hidden')" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg font-semibold transition-all">무시하기</button>
+                <button onclick="document.getElementById('deadlock-modal').classList.add('hidden')" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white py-2 rounded-lg font-semibold shadow-lg shadow-rose-900/50 transition-all">수동 조종 (Teleop)</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 🟢 [모달 4] 로봇 ON (접속 정보) -->
+    <div id="on-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[420px] transform scale-95 transition-transform duration-300" id="on-modal-content">
+            <div class="px-5 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+                <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-power-off text-emerald-400 mr-2"></i><span id="on-title">로봇 구동</span>: <span id="on-robot-name"></span></h2>
+                <button onclick="closeOnModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-5 space-y-3 text-xs">
+                <div id="on-local-note" class="hidden text-amber-400 bg-amber-500/10 border border-amber-900 rounded p-2">테스트(local) 모드: 이 PC에서 가짜 로봇을 실행합니다. IP·사용자·비밀번호는 쓰이지 않습니다.</div>
+                <div class="flex gap-2">
+                    <label class="flex-1 block text-slate-400">IP 주소<input id="on-ip" type="text" autocomplete="off" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono" placeholder="192.168.4.1"></label>
+                    <label class="w-32 block text-slate-400">SSH 사용자<input id="on-user" type="text" autocomplete="off" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono" placeholder="pinky"></label>
+                </div>
+                <label class="block text-slate-400">비밀번호 <span class="text-slate-600">(SSH 키가 등록된 로봇이면 비워도 됨)</span>
+                    <input id="on-pw" type="password" autocomplete="new-password" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white"></label>
+                <label class="flex items-start gap-2 text-slate-300"><input id="on-key" type="checkbox" class="mt-0.5"><span>다음부터 비밀번호 없이 접속 <span class="text-slate-500">(이 PC의 SSH 키를 로봇에 등록)</span></span></label>
+                <p class="text-slate-500">비밀번호는 파일에 저장하지 않습니다. 로봇이 켜져 있는 동안 재접속용으로만 백엔드 메모리에 두고, OFF 하면 지웁니다.</p>
+                <p id="on-error" class="text-rose-400 hidden"></p>
+                <button id="on-submit" onclick="submitOn()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg font-bold">ON</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🟢 [모달 7] 로봇 추가 -->
+    <div id="add-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[440px] transform scale-95 transition-transform duration-300" id="add-modal-content">
+            <div class="px-5 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+                <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-plus text-cyan-400 mr-2"></i>로봇 추가</h2>
+                <button onclick="closeAddModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-5 space-y-3 text-xs">
+                <div id="add-local-note" class="hidden text-amber-400 bg-amber-500/10 border border-amber-900 rounded p-2">테스트(local) 모드: 추가한 로봇은 이 PC에서 가짜 로봇으로 뜹니다. IP·사용자·비밀번호는 쓰이지 않습니다.</div>
+                <label class="block text-slate-400">로봇 ID (ROS namespace)<input id="add-id" type="text" autocomplete="off" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono" placeholder="amr_01"></label>
+                <p class="text-slate-500 -mt-1">로봇의 토픽이 <span class="font-mono text-slate-300">/<span id="add-id-preview">amr_01</span>/...</span> 로 나갑니다. 영문 소문자로 시작하고 소문자·숫자·_ 만 씁니다.</p>
+                <div class="flex gap-2">
+                    <label class="flex-1 block text-slate-400">IP 주소<input id="add-ip" type="text" autocomplete="off" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono" placeholder="192.168.4.1"></label>
+                    <label class="w-32 block text-slate-400">SSH 사용자<input id="add-user" type="text" autocomplete="off" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono" placeholder="pinky"></label>
+                </div>
+                <label class="block text-slate-400">비밀번호 <span class="text-slate-600">(SSH 키가 등록된 로봇이면 비워도 됨)</span>
+                    <input id="add-pw" type="password" autocomplete="new-password" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white"></label>
+                <label class="flex items-start gap-2 text-slate-300"><input id="add-key" type="checkbox" class="mt-0.5"><span>다음부터 비밀번호 없이 접속 <span class="text-slate-500">(이 PC의 SSH 키를 로봇에 등록)</span></span></label>
+                <label class="flex items-start gap-2 text-slate-300"><input id="add-start" type="checkbox" class="mt-0.5" checked><span>추가한 뒤 바로 구동(ON)</span></label>
+                <p class="text-slate-500">접속과 로봇의 launch 패키지를 확인한 뒤 추가합니다. 비밀번호는 파일에 저장하지 않고, 로봇이 켜져 있는 동안 재접속용으로만 백엔드 메모리에 둡니다.</p>
+                <p id="add-error" class="text-rose-400 hidden"></p>
+                <button id="add-submit" onclick="submitAdd()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2 rounded-lg font-bold">추가</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🟢 [모달 5] 주행 목표 -->
+    <div id="goal-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[380px] transform scale-95 transition-transform duration-300" id="goal-modal-content">
+            <div class="px-5 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+                <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-location-arrow text-cyan-400 mr-2"></i>목표 좌표 입력: <span id="goal-robot-name"></span></h2>
+                <button onclick="closeGoalModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-5 space-y-3 text-xs">
+                <p class="text-slate-500">맵 위 클릭 선택은 다음 단계에서 추가됩니다. 지금은 map 좌표(m)를 직접 입력합니다.</p>
+                <div class="flex gap-2">
+                    <label class="flex-1 text-slate-400">x<input id="goal-x" type="number" step="0.1" value="1.0" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono"></label>
+                    <label class="flex-1 text-slate-400">y<input id="goal-y" type="number" step="0.1" value="0.0" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono"></label>
+                    <label class="flex-1 text-slate-400">yaw(deg)<input id="goal-yaw" type="number" step="15" value="0" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono"></label>
+                </div>
+                <button onclick="submitGoal()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2 rounded-lg font-bold">목표 지정</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🟢 초기 위치: 벽까지의 줄자 거리로 입력 -->
+    <div id="wall-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[440px] transform scale-95 transition-transform duration-300" id="wall-modal-content">
+            <div class="px-5 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+                <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-ruler-combined text-amber-400 mr-2"></i>벽 거리로 초기 위치: <span id="wall-robot-name"></span></h2>
+                <button onclick="closeWallModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-5 space-y-3 text-xs">
+                <p class="text-slate-500">로봇을 벽 근처에 두고, 보는 방향과 벽까지의 거리를 줄자로 재서 입력하세요. 거리는 <b>휠 센터 기준</b>(앞·뒤 벽은 휠 축 기준)입니다. 현재 선택된 맵의 벽에서 위치를 계산합니다.</p>
+                <label class="block text-slate-400">로봇이 보는 방향 (맵 기준)
+                    <select id="wall-heading" onchange="wallHeadingChanged()" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white">
+                        <option value="0">맵 오른쪽 (+x, 0°)</option>
+                        <option value="90">맵 위쪽 (+y, 90°)</option>
+                        <option value="180" selected>맵 왼쪽 (−x, 180°)</option>
+                        <option value="-90">맵 아래쪽 (−y, −90°)</option>
+                        <option value="custom">직접 입력(°)</option>
+                    </select>
+                </label>
+                <input id="wall-heading-custom" type="number" step="1" value="0" class="hidden w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono" placeholder="yaw(deg), 맵 +x 가 0°, 반시계 +">
+                <div class="flex gap-2 items-end">
+                    <label class="flex-1 text-slate-400">첫째 벽
+                        <select id="wall-side1" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white">
+                            <option value="rear" selected>뒤쪽 벽</option><option value="front">앞쪽 벽</option><option value="left">왼쪽 벽</option><option value="right">오른쪽 벽</option>
+                        </select></label>
+                    <label class="w-24 text-slate-400">거리(cm)<input id="wall-d1" type="number" step="0.5" value="37" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono"></label>
+                </div>
+                <div class="flex gap-2 items-end">
+                    <label class="flex-1 text-slate-400">둘째 벽
+                        <select id="wall-side2" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white">
+                            <option value="rear">뒤쪽 벽</option><option value="front">앞쪽 벽</option><option value="left" selected>왼쪽 벽</option><option value="right">오른쪽 벽</option>
+                        </select></label>
+                    <label class="w-24 text-slate-400">거리(cm)<input id="wall-d2" type="number" step="0.5" value="16" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-white font-mono"></label>
+                </div>
+                <button onclick="solveWallPose()" class="w-full bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg font-bold">위치 계산 (지도에 후보 표시)</button>
+                <div id="wall-result" class="space-y-1.5"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🟢 [모달 6] 로봇 로그 -->
+    <div id="log-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[900px] transform scale-95 transition-transform duration-300" id="log-modal-content">
+            <div class="px-5 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-850">
+                <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-terminal text-amber-400 mr-2"></i>Logs: <span id="log-robot-name"></span></h2>
+                <button onclick="closeLogModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="px-5 pt-3 flex items-center gap-2 text-xs">
+                <button id="tab-rosout" onclick="setLogTab('rosout')" class="px-3 py-1 rounded bg-slate-700 text-white">ROS 로그</button>
+                <button id="tab-launch" onclick="setLogTab('launch')" class="px-3 py-1 rounded bg-slate-800 text-slate-400">Launch 출력</button>
+                <select id="log-level" onchange="renderLog()" class="ml-auto bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-300">
+                    <option value="10">DEBUG+</option><option value="20" selected>INFO+</option><option value="30">WARN+</option><option value="40">ERROR+</option>
+                </select>
+                <button onclick="clearRosLog()" class="px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white">지우기</button>
+            </div>
+            <pre id="log-body" class="m-5 mt-3 h-[420px] overflow-auto bg-black rounded p-3 text-[11px] leading-relaxed font-mono text-slate-300 whitespace-pre-wrap"></pre>
+        </div>
+    </div>
+
+    <!-- 🟢 맵 클릭 후 뜨는 로봇 선택 팝업: 이 목표를 어느 로봇에 지정할지 고른다 -->
+    <div id="goal-picker" class="hidden fixed z-[70] w-[340px] bg-slate-900 border border-slate-600 rounded-xl shadow-2xl p-3 text-xs">
+        <div class="flex items-start justify-between gap-2 mb-1">
+            <div>
+                <p class="font-bold text-white text-sm"><i class="fa-solid fa-flag-checkered text-cyan-400 mr-1.5"></i>이 목표를 어느 로봇에 지정할까요?</p>
+                <p id="goal-picker-coord" class="font-mono text-slate-400 mt-0.5"></p>
+            </div>
+            <button onclick="closeGoalPicker()" class="text-slate-500 hover:text-white" title="닫기 (Esc)"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="goal-picker-list" class="space-y-1.5 mt-2"></div>
+        <p class="text-slate-500 mt-2">선택한 로봇의 목표로만 지정됩니다. 가까운 로봇이 자동으로 가지 않습니다.</p>
+    </div>
+
+    <div id="toast-area" class="fixed bottom-4 right-4 z-[60] space-y-2 pointer-events-none"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

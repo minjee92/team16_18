@@ -1,0 +1,22 @@
+<?xml version='1.0' ?>
+<!--
+  pinky_bringup/bringup_robot.launch.xml 을 수정 없이 namespace 안에서 실행하는 래퍼.
+  로봇(RPi)에서 실행:
+    ros2 launch pinky_fms_bringup robot_bringup.launch.xml namespace:=amr_01
+
+  - 모든 토픽이 /<namespace>/... 로 나간다 (예: /amr_01/odom, /amr_01/battery/percent)
+  - TF 는 /<namespace>/tf 로 분리되므로 프레임 이름(odom, base_link ...)은 접두어 없이 그대로 쓴다.
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+
+    <group>
+        <push-ros-namespace namespace="$(var namespace)"/>
+        <!-- 안쪽 launch(upload_robot 등)가 같은 이름의 namespace 인자를 다시 적용하지 않도록 비운다 -->
+        <let name="namespace" value=""/>
+        <set_remap from="/tf" to="tf"/>
+        <set_remap from="/tf_static" to="tf_static"/>
+
+        <include file="$(find-pkg-share pinky_bringup)/launch/bringup_robot.launch.xml"/>
+    </group>
+</launch>

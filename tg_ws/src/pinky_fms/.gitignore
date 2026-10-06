@@ -1,0 +1,25 @@
+# Python 캐시
+__pycache__/
+*.pyc
+
+# 백엔드 가상환경 (requirements.txt 로 다시 만든다)
+control_pc/backend/.venv/
+
+# 백엔드가 실행 중에 만드는 데이터 (GUI 로 업로드한 맵, 마지막 접속 IP, 켠 로봇 목록)
+control_pc/backend/maps/
+control_pc/backend/state/
+
+# 주행 시험 기록 (tools/record_*.py 가 만든다)
+fms_logs/
+
+# colcon 산출물 / 편집기
+build/
+install/
+log/
+.vscode/
+.idea/
+*.swp
+
+# macOS 압축 부산물
+__MACOSX/
+.DS_Store

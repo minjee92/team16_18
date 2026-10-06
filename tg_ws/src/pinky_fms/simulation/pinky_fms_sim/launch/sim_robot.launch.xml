@@ -1,0 +1,53 @@
+<?xml version='1.0' ?>
+<!--
+  Gazebo 에 로봇 한 대를 namespace 로 넣고, 실물과 같은 Nav2(robot_nav.launch.xml)를 붙인다. (sim_world 가 먼저 떠 있어야 함)
+    ros2 launch pinky_fms_sim sim_robot.launch.xml namespace:=amr_01 x:=1.97 y:=0.13 yaw:=3.14
+  실물과 다른 점: TF 프레임에 접두어(amr_01/)가 붙는다(가제보 모델 링크 이름이 그렇게 생성됨). 그래서 Nav2 에 frame_prefix 로 알려 준다.
+  토픽 이름(/amr_01/scan, /amr_01/odom, /amr_01/cmd_vel, /amr_01/tf ...)은 실물과 같다.
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <arg name="x" default="0.20"/>
+    <arg name="y" default="0.15"/>
+    <arg name="yaw" default="0.0"/>
+    <arg name="map" default="$(find-pkg-share pinky_fms_sim)/maps/mission4_3_clean_1cm.yaml"/>
+    <arg name="world_name" default="fms_course"/>
+    <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
+
+    <!-- 로봇 모델: sim_urdf.sh 가 만든 URDF (가제보 센서 참조 수정본). TF 프레임은 'amr_01/...' 로 나간다 -->
+    <node pkg="robot_state_publisher" exec="robot_state_publisher" name="robot_state_publisher" namespace="$(var namespace)" output="screen">
+        <param name="robot_description" value="$(command '$(find-pkg-prefix pinky_fms_sim)/lib/pinky_fms_sim/sim_urdf.sh $(var namespace)')"/>
+        <param name="frame_prefix" value="$(var namespace)/"/>
+        <param name="use_sim_time" value="True"/>
+        <remap from="/tf" to="tf"/>
+        <remap from="/tf_static" to="tf_static"/>
+    </node>
+
+    <!-- 같은 이름의 모델이 남아 있으면(OFF 뒤 다시 ON) 먼저 지운다. 없으면 실패해도 무시 -->
+    <executable cmd="$(find-pkg-prefix pinky_fms_sim)/lib/pinky_fms_sim/gz_remove_model.sh $(var world_name) $(var namespace)" output="log"/>
+    <timer period="2.0">
+        <node pkg="ros_gz_sim" exec="create" name="create_$(var namespace)" output="screen"
+              args="-world $(var world_name) -name $(var namespace) -topic /$(var namespace)/robot_description -x $(var x) -y $(var y) -z 0.05 -Y $(var yaw)"/>
+    </timer>
+
+    <!-- Gazebo <-> ROS 브리지: 토픽 이름은 실물과 동일하게 /namespace/... -->
+    <node pkg="ros_gz_bridge" exec="parameter_bridge" name="bridge_$(var namespace)" output="screen"
+          args="/$(var namespace)/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan /$(var namespace)/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry /$(var namespace)/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist /tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V">
+        <remap from="/tf" to="/$(var namespace)/tf"/>
+        <param name="use_sim_time" value="True"/>
+    </node>
+
+    <!-- 실물 로봇이 내는 배터리 토픽 흉내 (관제가 로봇을 발견하는 데 씀) -->
+    <executable cmd="$(find-pkg-prefix pinky_fms_sim)/lib/pinky_fms_sim/fake_battery.sh $(var namespace)" output="log"/>
+
+    <!-- Nav2 + AMCL + 라이다 필터: 실물과 같은 launch, 같은 파라미터 파일 -->
+    <timer period="4.0">
+        <include file="$(find-pkg-share pinky_fms_bringup)/launch/robot_nav.launch.xml">
+            <arg name="namespace" value="$(var namespace)"/>
+            <arg name="map" value="$(var map)"/>
+            <arg name="params_file" value="$(var params_file)"/>
+            <arg name="use_sim_time" value="True"/>
+            <arg name="frame_prefix" value="$(var namespace)/"/>
+        </include>
+    </timer>
+</launch>

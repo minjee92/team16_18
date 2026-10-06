@@ -1,0 +1,24 @@
+# 로봇이 없을 때 쓰는 데모용 설정: ON 버튼이 이 PC 에서 가짜 로봇(mock_robot)을 띄운다.
+# GUI 의 '로봇 추가'로 넣는 로봇도 가짜 로봇으로 뜬다 (IP·비밀번호는 쓰이지 않음).
+domain_id: 16
+heartbeat_timeout_sec: 3.0
+# DDS 탐색 방식. Wi-Fi 에서 멀티캐스트 탐색이 불안정해 통신이 끊기면 unicast 로 바꾼다.
+#   multicast: 기본(자동 탐색) / unicast: 멀티캐스트를 끄고 로봇이 관제PC IP 를 직접 지정 (RMW: rmw_cyclonedds_cpp)
+# unicast 로 바꾸면 관제PC 터미널/프로세스에도 `source src/pinky_fms/fms_env.sh` 로 같은 설정을 적용해야 한다.
+network:
+  discovery: unicast
+  interface: ""
+  max_participants: 100         # 한 PC 에서 동시에 뜨는 ROS 프로세스 수보다 크게
+  extra_peers: []               # (선택) 미리 아는 로봇 IP. 보통 비워도 된다 (로봇이 먼저 관제PC 를 찾아온다)
+
+defaults:
+  user: tkoo
+  mode: local
+  ws_setup: source /opt/ros/jazzy/setup.bash && source ~/pinky/install/setup.bash
+  launch_cmd: ros2 launch pinky_fms_core mock_robot.launch.xml namespace:={namespace}
+
+robots:
+  amr_01:
+    ip: 127.0.0.1
+  amr_02:
+    ip: 127.0.0.1
