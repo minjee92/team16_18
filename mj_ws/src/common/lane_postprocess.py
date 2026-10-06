@@ -112,6 +112,7 @@ class LaneTracker:
         self.lost_time = 0.0     # 마지막으로 차선을 본 뒤 지난 시간 (초)
         self.last_valid_time = None
         self.target_x = None     # 마지막 update에서 조향에 쓴 목표점 x (못 봤으면 None)
+        self.rows_obs = []       # 마지막 update의 행별 관측 (로그·영상용, 계산에는 쓰지 않음)
 
     def reset(self):
         """조향 상태를 초기화한다 (교차로 회전 뒤 등). 도로 반폭 추정은 유지한다."""
@@ -132,6 +133,9 @@ class LaneTracker:
           steer   : 부드럽게 처리한 조향값
           valid   : 차선을 하나라도 봤는지
         조향에 쓴 목표점 x는 self.target_x, 차선을 못 본 시간은 self.lost_time 에 남는다.
+        행별로 실제 읽은 값은 self.rows_obs 에 남는다:
+          [{'y', 'lx', 'rx', 'source', 'cx', 'half_width'}]  (cx 는 목표점 계산에 쓴 정수값,
+           half_width 는 이 프레임에서 갱신한 뒤의 값, 못 읽은 행은 lx/rx/source/cx 가 None)
         """
 
         if self.last_valid_time is None:
@@ -139,6 +143,7 @@ class LaneTracker:
 
         centers = []
         weights = []
+        rows_obs = []
         seen = False
 
         for y, w in zip(self.rows, self.row_weights):
@@ -162,11 +167,17 @@ class LaneTracker:
                 source = 'right'
 
             else:
+                rows_obs.append({'y': y, 'lx': None, 'rx': None, 'source': None,
+                                 'cx': None, 'half_width': self.half_width[y]})
                 continue
 
             seen = True
             centers.append((int(cx), y, source))
             weights.append(w)
+            rows_obs.append({'y': y, 'lx': lx, 'rx': rx, 'source': source,
+                             'cx': int(cx), 'half_width': self.half_width[y]})
+
+        self.rows_obs = rows_obs
 
         if not seen:
             self.target_x = None

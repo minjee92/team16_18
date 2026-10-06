@@ -53,4 +53,21 @@ tracker.update(None, None, now=5.0)
 T.check('reset 후 첫 상실 프레임 lost_time = 0', tracker.lost_time == 0.0, f'{tracker.lost_time}')
 T.check('reset 후 steer 0', tracker.steer == 0.0)
 
+# rows_obs: 로그·영상용 행별 관측이 실제 계산(centers, target_x)과 맞는지
+partial = np.zeros((H, W), np.uint8)
+partial[int(H * 0.75):, 400:410] = 1          # 아래쪽 두 행(0.90, 0.80)에만 left_lane
+tracker = LaneTracker(W, H)
+centers, _, _, valid = tracker.update(partial, None, now=0.0)
+obs = tracker.rows_obs
+T.check('rows_obs 는 샘플 행마다 하나', [o['y'] for o in obs] == tracker.rows)
+T.check('읽은 행: source=left, lx 있음, rx 없음, cx = int(lx + 반폭)',
+        all(o['source'] == 'left' and o['lx'] is not None and o['rx'] is None
+            and o['cx'] == int(o['lx'] + o['half_width']) for o in obs[:2]))
+T.check('못 읽은 행: lx/rx/source/cx 모두 None', all(o['lx'] is None and o['source'] is None and o['cx'] is None
+                                                  for o in obs[2:]))
+T.check('rows_obs 의 cx 가 centers 와 같음', [(o['cx'], o['y'], o['source']) for o in obs[:2]] == centers)
+weighted = sum(o['cx'] * w for o, w in zip(obs, tracker.row_weights) if o['cx'] is not None)
+T.check('rows_obs 로 다시 계산한 목표점 = target_x',
+        valid and weighted / sum(tracker.row_weights[:2]) == tracker.target_x)
+
 T.finish()
