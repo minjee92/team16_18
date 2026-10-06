@@ -238,3 +238,31 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 .DS_Store
+
+# ---- mj_ws 추가 ----
+# 영상
+*.mp4
+*.avi
+*.mkv
+
+# mj_ws 데이터 폴더: 폴더(.gitkeep)만 추적하고 내용물은 제외
+mj_ws/models/*
+!mj_ws/models/.gitkeep
+mj_ws/inputs/*
+!mj_ws/inputs/.gitkeep
+mj_ws/outputs/*
+!mj_ws/outputs/.gitkeep
+
+# mj_ws 임시 파일 (통째로 제외)
+mj_ws/tmp/
+
+# 모델 관련 폴더
+old_pt/
+lane_model_ncnn/
+
+# 데이터셋 심볼릭 링크 (절대경로라 팀원에겐 무의미)
+dataset
+
+# 오타로 생긴 파일
+base_footprint:
+pinky@*
