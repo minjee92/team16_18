@@ -36,6 +36,7 @@ import csv
 import os
 import queue
 import select
+import signal
 import sys
 import termios
 import threading
@@ -49,8 +50,9 @@ import cv2
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Twist
-from rclpy.executors import SingleThreadedExecutor
+from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Range
 
 SRC_DIR = Path(__file__).resolve().parent.parent     # mj_ws/src/
@@ -472,19 +474,81 @@ def parse_args():
     return parser.parse_args()
 
 
+class StopRequest:
+    """
+    종료 요청 (키·영상 끝·신호를 한 경로로). rclpy 의 신호 처리 대신 직접 처리한다.
+
+    rclpy 기본 처리는 SIGINT/SIGTERM 에서 context 를 바로 내려서, 그 뒤 정지 명령 publish 가
+    "publisher's context is invalid" 로 실패하고 녹화 마무리(moov)를 건너뛰었다. SIGHUP(SSH 끊김)은
+    아예 처리하지 않아 즉시 죽었다. 여기서는 신호가 오면 플래그만 세우고, 메인 루프가 빠져나온 뒤
+    정해진 순서로 정리한다. 정리 중에 다시 오는 신호는 무시해 정리가 끊기지 않게 한다.
+    """
+
+    SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+    def __init__(self):
+        self.requested = False
+        self.reason = ''
+
+    def install(self):
+        for sig in self.SIGNALS:
+            signal.signal(sig, self._on_signal)
+
+    def ignore_all(self):
+        """정리가 끝난 뒤: 신호를 완전히 무시한다. 파이썬 종료 과정은 직접 단 핸들러를 기본값으로 되돌리지만
+        SIG_IGN 은 그대로 두므로, 종료 직전에 온 신호가 프로세스를 죽여 종료 코드를 바꾸지 않는다."""
+        for sig in self.SIGNALS:
+            signal.signal(sig, signal.SIG_IGN)
+
+    def request(self, reason):
+        if not self.requested:
+            self.requested = True
+            self.reason = reason
+
+    def _on_signal(self, signum, frame):
+        name = signal.Signals(signum).name
+        if self.requested:
+            print(f'\n{name}: 정리 중 — 정지 명령과 영상 저장을 마칠 때까지 기다립니다', flush=True)
+            return
+        self.request(f'신호 {name}')
+
+
+def spin_quietly(executor):
+    """ROS executor 스레드. context 가 밖에서 내려가도 traceback 없이 끝낸다."""
+    try:
+        executor.spin()
+    except ExternalShutdownException:
+        pass
+
+
+def run_cleanup(steps):
+    """정리 단계를 순서대로 실행한다. 한 단계가 실패해도 다음 단계는 실행한다."""
+    for name, action in steps:
+        if action is None:
+            continue
+        try:
+            action()
+        except Exception as error:
+            print(f'정리 실패 ({name}): {type(error).__name__}: {error}', flush=True)
+
+
 def main():
     args = parse_args()
 
-    rclpy.init()
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)   # 신호는 StopRequest 가 처리
+    stop = StopRequest()
+    stop.install()
+
     node = Step2LaneFollow(publish_cmd=not args.dry_run)
     executor = SingleThreadedExecutor()
     executor.add_node(node)
-    spin_thread = threading.Thread(target=executor.spin, daemon=True)
+    spin_thread = threading.Thread(target=spin_quietly, args=(executor,), daemon=True)
     spin_thread.start()
 
     source = None
     log = None
     recorder = None
+    exit_code = 0
     try:
         from ultralytics import YOLO
         node.get_logger().info(f'모델 로딩: {args.model}')
@@ -492,7 +556,9 @@ def main():
         ok, message = verify_input_size(model, INFER_SIZE)
         if not ok:
             print(f'\n오류: {message}\n')
-            return 2                         # finally 에서 정리 후 종료
+            stop.request('입력 크기 불일치')
+            exit_code = 2
+            return exit_code                 # finally 에서 정리 후 종료
         node.get_logger().info(message)
 
         source = VideoSource(args.video, FRAME_SIZE) if args.video else PiCameraSource(FRAME_SIZE)
@@ -536,21 +602,19 @@ def main():
                 print('경고: 터미널이 아니라 키를 받을 수 없습니다. 출발하지 않습니다.')
             next_deadline = time.monotonic()
 
-            while rclpy.ok():
-                quit_requested = False
+            while not stop.requested:
                 for key in keys.read():
                     if key == 'quit':
-                        quit_requested = True
+                        stop.request('키 Enter/ESC')
                     elif key == 'start':
                         ok, reason = node.try_start(time.monotonic())
                         print('출발' if ok else f'출발 불가: {reason}')
-                if quit_requested:
-                    print('\n종료 요청')
+                if stop.requested:
                     break
 
                 frame = source.read()
                 if frame is None:
-                    print('\n영상 끝')
+                    stop.request('영상 끝')
                     break
                 now = time.monotonic()
 
@@ -598,27 +662,42 @@ def main():
                 else:
                     next_deadline = time.monotonic()
 
-    except KeyboardInterrupt:
-        print('\n사용자 중단 (Ctrl+C)')
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        stop.request('예외')
+        exit_code = 1
 
     finally:
-        node.stop()
-        if source is not None:
-            source.close()
-        if recorder is not None:
-            recorder.close()
-            print(f'주행 영상: {recorder.path} (녹화 {recorder.written}프레임, 버림 {recorder.dropped}, '
-                  f'오류 {recorder.failed})')
-        if log is not None:
-            log.close()
-            print(f'주행 로그: {log.path} ({log.rows}줄)')
-        executor.shutdown()
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-        print('종료 완료')
-    return 0
+        stop.request('정리')                      # 이후 오는 신호는 무시 (정리가 끊기지 않게)
+        print(f'\n종료: {stop.reason}', flush=True)
 
+        def close_recorder():
+            recorder.close()
+            print(f'영상 저장 완료: {recorder.path} ({recorder.written}프레임)', flush=True)
+            if recorder.dropped or recorder.failed:
+                print(f'  녹화 버림 {recorder.dropped}, 오류 {recorder.failed}', flush=True)
+
+        def close_log():
+            log.close()
+            print(f'주행 로그: {log.path} ({log.rows}줄)', flush=True)
+
+        def stop_spin():
+            executor.shutdown()
+            spin_thread.join(timeout=5)
+
+        run_cleanup([
+            ('정지 명령', node.stop),                                  # context 가 살아 있을 때 먼저
+            ('카메라', source.close if source is not None else None),
+            ('녹화', close_recorder if recorder is not None else None),
+            ('주행 로그', close_log if log is not None else None),
+            ('ROS spin 스레드', stop_spin),
+            ('ROS 노드', node.destroy_node),
+            ('rclpy', lambda: rclpy.ok() and rclpy.shutdown()),
+            ('신호 무시', stop.ignore_all),        # rclpy.shutdown() 이 핸들러를 되돌려 놓으므로, 끝난 뒤엔 무시
+        ])
+        print('종료 완료', flush=True)
+    return exit_code
 
 if __name__ == '__main__':
     sys.exit(main())

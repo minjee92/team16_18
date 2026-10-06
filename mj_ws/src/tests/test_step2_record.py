@@ -104,10 +104,12 @@ T.check('이름에 실행 시각, CSV·영상 이름 같음',
         and csv_path.stem == mp4_path.stem, csv_path.stem)
 
 m_log = re.search(r'주행 로그: .*\((\d+)줄\)', text)
-m_rec = re.search(r'주행 영상: .*\(녹화 (\d+)프레임, 버림 (\d+), 오류 (\d+)\)', text)
-T.check('종료 시 로그 줄 수·녹화 수 출력', m_log is not None and m_rec is not None)
+m_rec = re.search(r'영상 저장 완료: .*\((\d+)프레임\)', text)
+m_drop = re.search(r'녹화 버림 (\d+), 오류 (\d+)', text)          # 버림·오류가 있을 때만 출력됨
+T.check('종료 시 로그 줄 수·"영상 저장 완료" 출력', m_log is not None and m_rec is not None)
 n_log = int(m_log[1]) if m_log else -1
-written, dropped, failed = (int(x) for x in m_rec.groups()) if m_rec else (-1, -1, -1)
+written = int(m_rec[1]) if m_rec else -1
+dropped, failed = (int(m_drop[1]), int(m_drop[2])) if m_drop else (0, 0)
 
 rows = list(csv.DictReader(open(csv_path)))
 tags = [f'{round(r * 100)}' for r in S2.SAMPLE_ROWS]

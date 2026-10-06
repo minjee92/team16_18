@@ -152,6 +152,8 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
    (좌/우 차선 검출·conf, 샘플 행별 lx/rx/중앙점/도로 반폭, target_x, steer, v/w, 초음파).
    마스크 오버레이 영상도 필요하면 `--record` (같은 이름의 .mp4, 화면의 step 번호 = CSV 의 step).
    주행 후 PC 로 가져오기: `rsync -av pinky@<로봇 IP>:~/team16_18/mj_ws/outputs/ mj_ws/outputs/`
+   종료: Enter/ESC·Ctrl+C·SIGTERM·SSH 끊김(SIGHUP)·예외 모두 정지 명령 → 영상 마무리(`영상 저장 완료: … (N프레임)`) → CSV 순으로 정리한다.
+   **SIGKILL·전원 차단은 정리할 수 없어 mp4 가 열리지 않는다** (CSV 는 10줄마다 디스크에 써서 그 전까지 남는다)
 
 - 4단계 미션 흐름(localization, `station/mission_gui.py`)은 `robot/lane_mission_drive.py` docstring 의 실행 순서를 따르되,
   2번(`pinky_sensor_adc`)을 bringup 바로 뒤에 넣는다
