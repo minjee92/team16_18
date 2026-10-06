@@ -112,7 +112,8 @@ LOST_STOP_SEC = 2.0
 SONAR_TOPIC = '/us_sensor/range'
 FRONT_STOP_DISTANCE = 0.15       # m. 이 거리 이하면 정지 (센서 측정 상한 약 0.97 m 보다 충분히 작게)
 SONAR_TIMEOUT = 0.3              # s. 측정이 이보다 오래 안 오면 정지 (센서 20Hz = 0.05초 주기의 6배)
-SONAR_MIN_RANGE = 0.02           # m. 드라이버의 min_range. 이보다 작으면 무효값(I2C 실패 −0.03 등) → 정지
+SONAR_MIN_RANGE = 0.02           # m. 드라이버의 min_range. 이보다 작거나 NaN/inf 면 무효값 (I2C 실패 −0.03 등)
+SONAR_INVALID_COUNT = 3          # 무효값이 이만큼 연속이면 정지 (20 Hz 면 0.15초). 그보다 짧은 튐은 무시하고 센다
 
 STEER_SIGN = -1.0 if MIRROR_INPUT else 1.0
 
@@ -281,7 +282,8 @@ class DriveLog:
         for tag in self.tags:
             columns += [f'lx_{tag}', f'rx_{tag}', f'src_{tag}', f'cx_{tag}', f'hw_{tag}']
         columns += ['target_x', 'error', 'steer', 'v', 'w',
-                    'sonar_range', 'sonar_age', 'estop_reason', 'recorded']
+                    'sonar_range', 'sonar_valid_range', 'sonar_age', 'sonar_invalid_streak',
+                    'sonar_invalid_ignored', 'estop_reason', 'recorded']
         self.file = open(path, 'w', newline='')
         self.writer = csv.DictWriter(self.file, fieldnames=columns)
         self.writer.writeheader()
@@ -297,7 +299,9 @@ class DriveLog:
             'cross_lane_det': int(confs['cross_lane'] is not None),
             'target_x': _fmt(tracker.target_x, 2), 'error': _fmt(error, 4), 'steer': _fmt(steer, 4),
             'v': _fmt(v, 3), 'w': _fmt(w, 3),
-            'sonar_range': _fmt(sonar[0], 3), 'sonar_age': _fmt(sonar[1], 3), 'estop_reason': sonar[2],
+            'sonar_range': _fmt(sonar['range'], 3), 'sonar_valid_range': _fmt(sonar['valid_range'], 3),
+            'sonar_age': _fmt(sonar['age'], 3), 'sonar_invalid_streak': sonar['streak'],
+            'sonar_invalid_ignored': sonar['ignored'], 'estop_reason': sonar['reason'],
             'recorded': int(recorded),
         }
         for tag, obs in zip(self.tags, tracker.rows_obs):
@@ -382,7 +386,7 @@ class Step2LaneFollow(Node):
         super().__init__('step2_lane_follow')
         self.publish_cmd = publish_cmd
         self.lock = threading.Lock()
-        self.front = FrontStop(FRONT_STOP_DISTANCE, SONAR_TIMEOUT, SONAR_MIN_RANGE)
+        self.front = FrontStop(FRONT_STOP_DISTANCE, SONAR_TIMEOUT, SONAR_MIN_RANGE, SONAR_INVALID_COUNT)
         self.started = False
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
@@ -399,7 +403,8 @@ class Step2LaneFollow(Node):
                 self._publish(0.0, 0.0)              # 즉시 정지
                 if self.started:
                     self.get_logger().warn(
-                        f'비상 정지: {self.front.trip_reason} (range {msg.range:.3f} m) — Space 로 재개')
+                        f'비상 정지: {self.front.trip_reason} (range {msg.range:.3f} m, '
+                        f'무효 연속 {self.front.invalid_streak}) — Space 로 재개')
 
     # ---------- 메인 루프에서 호출 ----------
 
@@ -429,18 +434,30 @@ class Step2LaneFollow(Node):
         return v, w, state
 
     def sonar_snapshot(self, now):
-        """(마지막 거리 m, 측정 후 지난 초, 비상 정지 이유) — 측정이 없으면 None."""
+        """초음파 상태 한 벌 (로그·영상용). 측정이 없으면 range/age 는 None.
+          range: 마지막 측정(무효값 포함), valid_range: 판정에 쓰는 마지막 유효 거리,
+          age: 측정 후 지난 초, streak: 현재 무효 연속 수, ignored: 지금까지 무시한 무효 측정 수,
+          reason: 비상 정지 중이면 그 이유"""
         with self.lock:
-            if self.front.last_time is None:
-                return None, None, self.front.trip_reason if self.front.tripped else ''
-            return (self.front.last_range, now - self.front.last_time,
-                    self.front.trip_reason if self.front.tripped else '')
+            front = self.front
+            return {
+                'range': front.last_range,
+                'valid_range': front.valid_range,
+                'age': None if front.last_time is None else now - front.last_time,
+                'streak': front.invalid_streak,
+                'ignored': front.invalid_summary()[0],
+                'reason': front.trip_reason if front.tripped else '',
+            }
+
+    def sonar_invalid_summary(self):
+        with self.lock:
+            return self.front.invalid_summary()
 
     def sonar_status(self, now):
-        distance, age, _ = self.sonar_snapshot(now)
-        if distance is None:
+        sonar = self.sonar_snapshot(now)
+        if sonar['range'] is None:
             return 'sonar -'
-        return f'sonar {distance:.2f}m ({age:.2f}s 전)'
+        return f'sonar {sonar["range"]:.2f}m ({sonar["age"]:.2f}s 전)'
 
     def stop(self, times=5):
         for _ in range(times):
@@ -586,7 +603,8 @@ def main():
         print(f'모드     : {"DRY RUN (cmd_vel 발행 안 함)" if args.dry_run else "주행"}'
               f'{"  / 입력: " + args.video if args.video else ""}')
         print(f'속도     : {BASE_SPEED:.2f} m/s, 차선 상실 {LOST_SLOW_SEC}s 감속 / {LOST_STOP_SEC}s 정지')
-        print(f'비상 정지: 전방 {FRONT_STOP_DISTANCE:.2f} m 이하, 초음파 {SONAR_TIMEOUT}s 끊김, 무효값')
+        print(f'비상 정지: 전방 {FRONT_STOP_DISTANCE:.2f} m 이하, 초음파 {SONAR_TIMEOUT}s 끊김, '
+              f'무효값 {SONAR_INVALID_COUNT}회 연속')
         print(f'주행 로그: {csv_path}')
         print(f'주행 영상: {video_path if recorder else "(--record 없음)"}')
         print('Space     : 출발 / 재개      Enter, ESC : 종료')
@@ -636,7 +654,9 @@ def main():
                     events = [text for name, text in (('crosswalk', 'CROSSWALK'), ('cross_lane', 'CROSS LANE'))
                               if confs[name] is not None]
                     det = '  '.join(f'{short} {_fmt(confs[name], 2) or "-"}' for name, short in REPORT_CLASSES)
-                    sonar_text = '-' if sonar[0] is None else f'{sonar[0]:.2f}m ({sonar[1]:.2f}s)'
+                    sonar_text = ('-' if sonar['range'] is None else
+                                  f'{sonar["range"]:.2f}m ({sonar["age"]:.2f}s)  '
+                                  f'inv {sonar["streak"]}/{SONAR_INVALID_COUNT} ign {sonar["ignored"]}')
                     recorded = recorder.submit({
                         'result': result, 'centers': centers, 'error': error, 'steer': steer,
                         'valid': valid, 'events': events, 'rows_obs': tracker.rows_obs,
@@ -644,7 +664,7 @@ def main():
                         'lines': [f'step {step}  t {t:.1f}s  {state}',
                                   f'steer {steer:+.3f}  v {v:.2f}  w {w:+.2f}  lost {tracker.lost_time:.2f}s',
                                   det,
-                                  f'sonar {sonar_text}  {sonar[2]}'],
+                                  f'sonar {sonar_text}  {sonar["reason"]}'],
                     })
                 log.write(step, t, state, valid, tracker, confs, error, steer, v, w, sonar, recorded)
 
@@ -682,6 +702,10 @@ def main():
             log.close()
             print(f'주행 로그: {log.path} ({log.rows}줄)', flush=True)
 
+        def report_sonar():
+            ignored, spikes, stops = node.sonar_invalid_summary()
+            print(f'초음파 무효값: 무시 {ignored}회 (단발 튐 {spikes}번), 무효로 정지 {stops}번', flush=True)
+
         def stop_spin():
             executor.shutdown()
             spin_thread.join(timeout=5)
@@ -691,6 +715,7 @@ def main():
             ('카메라', source.close if source is not None else None),
             ('녹화', close_recorder if recorder is not None else None),
             ('주행 로그', close_log if log is not None else None),
+            ('초음파 요약', report_sonar),
             ('ROS spin 스레드', stop_spin),
             ('ROS 노드', node.destroy_node),
             ('rclpy', lambda: rclpy.ok() and rclpy.shutdown()),

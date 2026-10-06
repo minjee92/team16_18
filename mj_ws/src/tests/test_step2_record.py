@@ -116,7 +116,8 @@ tags = [f'{round(r * 100)}' for r in S2.SAMPLE_ROWS]
 T.check('CSV 줄 수 = 출력된 줄 수', len(rows) == n_log, f'{len(rows)} vs {n_log}')
 T.check('step 이 0 부터 빠짐없이', [int(r['step']) for r in rows] == list(range(len(rows))))
 for col in ['t', 'state', 'valid', 'lost_time', 'left_det', 'left_conf', 'right_det', 'right_conf',
-            'target_x', 'error', 'steer', 'v', 'w', 'sonar_range', 'estop_reason', 'recorded'] + \
+            'target_x', 'error', 'steer', 'v', 'w', 'sonar_range', 'sonar_valid_range', 'sonar_age',
+            'sonar_invalid_streak', 'sonar_invalid_ignored', 'estop_reason', 'recorded'] + \
            [f'{k}_{tag}' for tag in tags for k in ('lx', 'rx', 'src', 'cx', 'hw')]:
     if col not in rows[0]:
         T.check(f'열 {col} 있음', False)

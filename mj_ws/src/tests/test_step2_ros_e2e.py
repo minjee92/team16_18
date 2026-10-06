@@ -32,7 +32,10 @@ from rclpy.executors import SingleThreadedExecutor  # noqa: E402
 from rclpy.node import Node                        # noqa: E402
 from sensor_msgs.msg import Range                  # noqa: E402
 
-STOP_LATENCY_MAX = 0.10       # 장애물·무효값 → 0 명령까지 (센서 주기 0.05초 + 여유)
+import step2_lane_follow as S2      # noqa: E402  (SONAR_INVALID_COUNT)
+
+STOP_LATENCY_MAX = 0.10       # 장애물 → 0 명령까지 (센서 주기 0.05초 + 여유)
+INVALID_LATENCY_MAX = S2.SONAR_INVALID_COUNT * 0.05 + 0.05   # 무효값 연속 N회(20 Hz) + 여유
 TIMEOUT_LATENCY_MAX = 0.55    # 끊김 → 0 명령까지 (SONAR_TIMEOUT 0.3초 + 센서 주기 + 제어 루프 0.1초 + 여유)
 
 
@@ -41,6 +44,7 @@ class Harness(Node):
         super().__init__('step2_e2e_harness')
         self.range = 0.5
         self.sonar_on = False
+        self.spike = 0                                   # 남은 단발 무효값 수
         self.cmds = []                                   # (수신 시각, v, w)
         self.pub = self.create_publisher(Range, '/us_sensor/range', 10)
         self.create_subscription(Twist, 'cmd_vel',
@@ -51,7 +55,10 @@ class Harness(Node):
         if self.sonar_on:
             msg = Range()
             msg.radiation_type = Range.ULTRASOUND
-            msg.min_range, msg.max_range, msg.range = 0.02, 3.0, float(self.range)
+            value = self.range
+            if self.spike > 0:                           # 단발 튐: 다음 몇 번만 무효값
+                value, self.spike = -0.03, self.spike - 1
+            msg.min_range, msg.max_range, msg.range = 0.02, 3.0, float(value)
             self.pub.publish(msg)
 
 
@@ -111,9 +118,12 @@ key(' ', 'space_obstacle')                     # 장애물 중 → 거부
 harness.range = 0.50
 time.sleep(0.5)
 key(' ', 'resume1')
-time.sleep(2.0)
+time.sleep(1.0)
+harness.spike = S2.SONAR_INVALID_COUNT - 1
+mark('spike')                                  # 기준보다 짧은 튐 → 무시하고 계속 주행
+time.sleep(1.5)
 harness.range = -0.03
-mark('invalid')                                # 무효값 → 즉시 0
+mark('invalid')                                # 무효값 연속 → N회째 0
 time.sleep(1.0)
 harness.range = 0.50
 time.sleep(0.3)
@@ -167,9 +177,9 @@ T.check('출발 전에는 주행 명령 없음', nonzero_between(0, events['star
 T.check('초음파 없이 Space → 출발 거부', '출발 불가: NO SONAR' in text)
 T.check('Space → 출발 (0.5초 안에 주행 명령)', within(first_after(events['start'], is_moving), 0.5))
 
-for name, nxt in (('obstacle', 'resume1'), ('invalid', 'resume2')):
+for name, nxt, limit in (('obstacle', 'resume1', STOP_LATENCY_MAX), ('invalid', 'resume2', INVALID_LATENCY_MAX)):
     latency = first_after(events[name], is_zero)
-    T.check(f'{name} → {STOP_LATENCY_MAX}초 안에 정지', latency is not None and latency <= STOP_LATENCY_MAX,
+    T.check(f'{name} → {limit:.2f}초 안에 정지', latency is not None and latency <= limit,
             f'{latency:.3f}s' if latency is not None else '정지 안 함')
     if latency is not None:
         T.check(f'{name} 정지 후 재개 전까지 주행 명령 0개',
@@ -177,6 +187,12 @@ for name, nxt in (('obstacle', 'resume1'), ('invalid', 'resume2')):
     T.check(f'{nxt} → 다시 주행', within(first_after(events[nxt], is_moving), 0.5))
 
 T.check('장애물 중 Space → 출발 거부', '출발 불가: OBSTACLE' in text)
+T.check(f'무효값 {S2.SONAR_INVALID_COUNT - 1}회 튐 → 정지하지 않고 계속 주행',
+        first_after(events['spike'], is_zero, limit=1.5) is None
+        and nonzero_between(events['spike'], events['spike'] + 1.0) > 5)
+T.check('종료 요약에 무시한 무효값 기록',
+        f'초음파 무효값: 무시 {S2.SONAR_INVALID_COUNT - 1}회 (단발 튐 1번), 무효로 정지 1번' in text,
+        next((l for l in text.splitlines() if l.startswith('초음파 무효값')), '요약 없음'))
 latency = first_after(events['sonar_off'], is_zero)
 T.check(f'초음파 끊김 → {TIMEOUT_LATENCY_MAX}초 안에 정지', latency is not None and latency <= TIMEOUT_LATENCY_MAX,
         f'{latency:.3f}s' if latency is not None else '정지 안 함')
