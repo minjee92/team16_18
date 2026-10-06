@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.8)
+project(pinky_fms_sim)
+find_package(ament_cmake REQUIRED)
+install(DIRECTORY launch worlds config DESTINATION share/${PROJECT_NAME})
+# 저장소 최상위 maps/ 의 지도를 같이 설치 (sim_robot 의 기본 지도)
+get_filename_component(FMS_MAPS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../maps" ABSOLUTE)
+install(DIRECTORY ${FMS_MAPS_DIR} DESTINATION share/${PROJECT_NAME})
+install(PROGRAMS scripts/sim_urdf.sh scripts/gz_remove_model.sh scripts/fake_battery.sh tools/map_to_world.py
+  DESTINATION lib/${PROJECT_NAME})
+ament_package()

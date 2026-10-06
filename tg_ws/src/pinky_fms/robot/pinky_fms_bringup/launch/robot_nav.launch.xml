@@ -1,0 +1,34 @@
+<?xml version='1.0' ?>
+<!--
+  pinky_navigation/bringup_launch.xml(Nav2 + AMCL)을 namespace 로 실행한다. (robot_bringup 이 먼저 실행 중이어야 함)
+    ros2 launch pinky_fms_bringup robot_nav.launch.xml namespace:=amr_01 map:=/path/to/map.yaml
+
+  원본 launch 는 namespace 안에서 그대로는 동작하지 않아(컨테이너 노드 로딩 실패, namespace 이중 적용,
+  파라미터 파일 미적용) 실제 처리는 nav2_namespaced.launch.py 에서 한다. 자세한 이유는 그 파일의 설명 참고.
+  이 패키지의 params/nav2_params.yaml(amr_01 튜닝값 기준, 두 로봇 공용)을 쓴다. namespace 에 맞게 노드 키와
+  costmap 의 scan 토픽을 바꾼 임시 파일은 nav2_namespaced.launch.py 가 실행할 때 만든다.
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <arg name="map" default=""/>
+    <arg name="use_composition" default="False"/>
+    <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
+    <arg name="use_sim_time" default="False"/>
+    <arg name="frame_prefix" default=""/>   <!-- 시뮬레이션: TF 프레임 접두어 (예: amr_01/). 실물은 비움 -->
+
+    <include file="$(find-pkg-share pinky_fms_bringup)/launch/nav2_namespaced.launch.py">
+        <arg name="namespace" value="$(var namespace)"/>
+        <arg name="map" value="$(var map)"/>
+        <arg name="use_composition" value="$(var use_composition)"/>
+        <arg name="params_file" value="$(var params_file)"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="frame_prefix" value="$(var frame_prefix)"/>
+    </include>
+
+    <!-- 다른 로봇을 지운 스캔(scan_robotfree): 전역 costmap 만 사용. 관제PC 의 fleet_traffic 이 other_robots 를 보내지 않으면 원래 스캔을 그대로 낸다 -->
+    <node pkg="pinky_fms_bringup" exec="robot_scan_filter.py" name="robot_scan_filter" namespace="$(var namespace)" output="screen">
+        <remap from="/tf" to="tf"/>
+        <remap from="/tf_static" to="tf_static"/>
+        <param name="use_sim_time" value="$(var use_sim_time)"/>
+    </node>
+</launch>

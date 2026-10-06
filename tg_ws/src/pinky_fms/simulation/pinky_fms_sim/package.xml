@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>pinky_fms_sim</name>
+  <version>0.0.1</version>
+  <description>관제(FMS)를 로봇 없이 Gazebo 에서 시험하기 위한 월드·로봇 launch. 실물 지도에서 월드를 만들고 실물과 같은 Nav2 를 붙인다. 로봇(RPi)에는 필요 없다.</description>
+  <maintainer email="tjkoobro@gmail.com">tkoo</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>pinky_fms_bringup</exec_depend>
+  <exec_depend>pinky_description</exec_depend>
+  <exec_depend>pinky_gz_sim</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

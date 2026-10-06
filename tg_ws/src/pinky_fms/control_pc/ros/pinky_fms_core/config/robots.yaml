@@ -1,0 +1,27 @@
+# 관제 설정. 로봇은 보통 GUI 의 '로봇 추가'에서 ID(namespace)·IP·사용자·비밀번호를 입력해 등록한다.
+# 모든 로봇은 같은 ROS_DOMAIN_ID 안에서 namespace(=로봇 ID)로 구분한다 (/amr_01/..., /amr_02/...).
+domain_id: 16
+heartbeat_timeout_sec: 3.0     # 이 시간 동안 로봇 데이터(배터리·odom·amcl_pose)가 안 오면 OFFLINE 으로 본다
+
+# DDS 탐색 방식. Wi-Fi 에서 멀티캐스트 탐색이 불안정해 통신이 끊기면 unicast 로 바꾼다.
+#   multicast: 기본(자동 탐색) / unicast: 멀티캐스트를 끄고 로봇이 관제PC IP 를 직접 지정 (RMW: rmw_cyclonedds_cpp)
+# unicast 로 바꾸면 관제PC 터미널/프로세스에도 `source src/pinky_fms/fms_env.sh` 로 같은 설정을 적용해야 한다.
+network:
+  discovery: unicast            # 로봇 자체 AP 에서 멀티캐스트 탐색이 끊겨 unicast 로 전환 (실물 로봇으로 양방향 확인)
+  interface: wlp0s20f3          # 관제PC 의 Wi-Fi 인터페이스 이름 (예: wlp0s20f3). unicast 일 때 관제PC 쪽에만 적용. 비우면 자동
+  max_participants: 100         # 한 PC 에서 동시에 뜨는 ROS 프로세스 수보다 크게
+  extra_peers: []               # (선택) 미리 아는 로봇 IP. 보통 비워도 된다 (로봇이 먼저 관제PC 를 찾아온다)
+
+# GUI 에서 추가하는 로봇에 공통으로 쓰는 값. {namespace} 는 로봇 ID 로 자동 치환된다.
+defaults:
+  user: pinky                   # SSH 사용자 (GUI 에서 로봇마다 바꿀 수 있음)
+  mode: ssh                     # ssh: 실제 로봇에 SSH 로 접속 / local: 이 PC 에서 가짜 로봇 실행(테스트)
+  ws_setup: source /opt/ros/jazzy/setup.bash && source ~/pinky_pro/install/setup.bash   # 로봇의 colcon 워크스페이스
+  launch_cmd: ros2 launch pinky_fms_bringup robot_bringup.launch.xml namespace:={namespace}
+
+# (선택) GUI 에 항상 표시할 고정 로봇. 키가 로봇 ID = namespace. GUI 에서는 지울 수 없다.
+# 보통은 비워 두고 GUI 의 '로봇 추가'를 쓴다.
+robots: {}
+#  amr_01:
+#    ip: 192.168.4.1
+#    user: pinky

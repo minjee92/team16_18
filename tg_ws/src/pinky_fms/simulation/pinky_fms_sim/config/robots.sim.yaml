@@ -1,0 +1,23 @@
+# Gazebo 시뮬레이션용 설정: GUI 의 ON 버튼이 이 PC 의 Gazebo 에 로봇을 넣고 실물과 같은 Nav2 를 띄운다.
+# 먼저 scripts/run_sim.sh (가제보 월드 + 관제 스택)를 실행한 뒤 GUI 에서 로봇을 ON 한다. (실물 지도 mission4_3_clean_1cm 그대로 사용)
+domain_id: 16
+heartbeat_timeout_sec: 3.0
+network:
+  discovery: multicast          # 모두 이 PC 안이므로 멀티캐스트(기본)로 충분
+  interface: ""
+  max_participants: 100
+  extra_peers: []
+
+defaults:
+  user: tkoo
+  mode: local
+  ws_setup: source /opt/ros/jazzy/setup.bash && source ~/pinky/install/setup.bash
+  launch_cmd: ros2 launch pinky_fms_sim sim_robot.launch.xml namespace:={namespace}
+
+robots:
+  amr_01:
+    ip: 127.0.0.1
+    launch_cmd: ros2 launch pinky_fms_sim sim_robot.launch.xml namespace:={namespace} x:=1.97 y:=0.13 yaw:=3.14
+  amr_02:
+    ip: 127.0.0.1
+    launch_cmd: ros2 launch pinky_fms_sim sim_robot.launch.xml namespace:={namespace} x:=0.20 y:=0.15 yaw:=0.0

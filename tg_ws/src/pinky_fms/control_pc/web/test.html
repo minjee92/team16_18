@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h1 id="status">ROS 2 연결 중...</h1>
+    <h1 id="battery" style="font-size: 150px; color: red;">--%</h1>
+    
+    <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <script>
+        const ros = new ROSLIB.Ros({ url : 'ws://localhost:9090' });
+        ros.on('connection', () => document.getElementById('status').innerText = "ROS 2 연결 성공! (데이터 대기 중)");
+        
+        // 정답 규격: std_msgs/msg/Int32
+        const batteryTopic = new ROSLIB.Topic({
+            ros: ros,
+            name: '/amr_01/battery_str', // 🚨 토픽명 변경
+            messageType: 'std_msgs/msg/String' // 🚨 타입 변경
+        });
+        
+        batteryTopic.subscribe(function(msg) {
+            // 이미 문자열로 오기 때문에 그대로 화면에 출력!
+            document.getElementById('battery').innerText = msg.data + '%';
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+<?xml version='1.0' ?>
+<!-- 관제PC 에서 실행: 미션 층 + 조정 층 -->
+<launch>
+    <arg name="robots_file" default="$(find-pkg-share pinky_fms_core)/config/robots.yaml"/>
+    <node pkg="pinky_fms_core" exec="fleet_mission" output="screen"/>
+    <node pkg="pinky_fms_core" exec="fleet_coordinator" output="screen">
+        <param name="robots_file" value="$(var robots_file)"/>
+    </node>
+</launch>

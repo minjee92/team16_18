@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.8)
+project(pinky_fms_bringup)
+
+find_package(ament_cmake REQUIRED)
+
+install(DIRECTORY launch params
+  DESTINATION share/${PROJECT_NAME}
+)
+install(PROGRAMS scripts/robot_scan_filter.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+ament_package()

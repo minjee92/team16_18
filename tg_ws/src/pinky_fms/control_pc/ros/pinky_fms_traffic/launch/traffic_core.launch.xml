@@ -1,0 +1,17 @@
+<launch>
+  <!-- fleet_coordinator 대신 쓰는 충돌 방지 조정 층. 기존 fms_core.launch.xml 은 그대로 두고, 이것을 대신 띄운다.
+       map_yaml 이 비어 있으면 fleet_coordinator 와 똑같이 동작한다 (충돌 방지 꺼짐). -->
+  <arg name="robots_file" default=""/>
+  <arg name="map_yaml" default=""/>
+  <arg name="conf_radius" default="0.34"/>
+  <arg name="conf_radius_parked" default="0.30"/>
+  <arg name="arrive_tol" default="0.25"/>
+  <node pkg="pinky_fms_core" exec="fleet_mission" output="screen"/>
+  <node pkg="pinky_fms_traffic" exec="fleet_traffic" output="screen">
+    <param name="robots_file" value="$(var robots_file)"/>
+    <param name="map_yaml" value="$(var map_yaml)"/>
+    <param name="conf_radius" value="$(var conf_radius)"/>
+    <param name="conf_radius_parked" value="$(var conf_radius_parked)"/>
+    <param name="arrive_tol" value="$(var arrive_tol)"/>
+  </node>
+</launch>

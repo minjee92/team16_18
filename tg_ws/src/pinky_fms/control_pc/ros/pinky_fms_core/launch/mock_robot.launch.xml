@@ -1,0 +1,8 @@
+<?xml version='1.0' ?>
+<!-- 로봇이 없을 때 테스트용: ros2 launch pinky_fms_core mock_robot.launch.xml namespace:=amr_01 -->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <node pkg="pinky_fms_core" exec="mock_robot" namespace="$(var namespace)" output="screen">
+        <param name="namespace" value="$(var namespace)"/>
+    </node>
+</launch>
