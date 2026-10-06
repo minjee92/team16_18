@@ -1,0 +1,21 @@
+<?xml version='1.0'?>
+<!--
+  관제 PC에서 실행하는 SLAM (로봇 부하 분산)
+
+  로봇이 발행하는 /scan, /tf(odom→base_footprint) 를 받아서
+    - /map                 (cross_lane 갈림길에서 로봇이 최단 경로 방향을 판단할 때 사용)
+    - map→odom 변환(/tf)   (로봇이 출발 위치와 현재 위치를 map 좌표로 얻을 때 사용)
+  를 만든다. 맵은 저장하지 않고 실행할 때마다 새로 만든다.
+
+  전제 조건:
+    - 로봇과 PC가 같은 ROS_DOMAIN_ID, 같은 네트워크
+    - 로봇과 PC의 시계가 동기화되어 있을 것 (chrony/NTP). 어긋나면 TF 시간 오류가 난다.
+    - 로봇에서 pinky_bringup 이 실행 중일 것 (/scan, /tf, /tf_static)
+    - 로봇에서 SLAM/Nav2 가 따로 돌고 있지 않을 것
+
+  실행 순서: 로봇을 출발 위치에 정지시킨 채 이 launch 를 먼저 실행 → /map 이 올라오면 로봇의
+             autonomous_drive.launch.xml 실행 (로봇이 출발 위치를 map 좌표로 기억한다)
+-->
+<launch>
+    <include file="$(find-pkg-share pinky_navigation)/launch/map_building.launch.xml"/>
+</launch>

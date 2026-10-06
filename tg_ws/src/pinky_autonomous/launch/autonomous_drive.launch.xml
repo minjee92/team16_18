@@ -1,0 +1,125 @@
+<?xml version='1.0'?>
+<!--
+  자율주행 launch 파일 (Pinky Pro / RPi5에서 실행)
+
+  전제 조건:
+    - pinky_bringup (bringup_robot.launch.xml) 이미 실행 중
+    - lamp_bringup.service systemd 서비스 실행 중 (ws2811 커널 모듈)
+    - pinky_emotion 노드가 종료된 상태 (LCD SPI 충돌 방지)
+    - enable_return_home:=true(기본)이면 SLAM(map→odom 변환, /map)이 필요하다.
+      기본은 관제 PC 에서 control_pc_slam.launch.xml 을 실행 (같은 ROS_DOMAIN_ID, 시간 동기화 필요).
+      로봇에서 돌릴 때만 run_slam_on_robot:=true. 같은 SLAM 이 두 군데서 돌면 충돌하므로 한 곳에서만.
+    - Nav2 가 실행 중이면 cmd_vel 이 겹치므로 종료할 것
+
+  pinky_lamp_control은 이 launch 파일이 자동으로 함께 시작합니다.
+  별도로 실행할 필요 없습니다.
+
+  YOLO 모델 경로:
+    model_path 인자를 실제 NCNN 모델 폴더 경로로 변경할 것.
+    예) /home/robot/models/best_ncnn_model
+-->
+<launch>
+    <arg name="model_path"          default="/home/pinky/yolo_drive/best_ncnn_model"/>
+    <arg name="drive_speed"         default="0.08"/>
+    <arg name="crosswalk_min_area"   default="0.05"/>
+    <arg name="crosswalk_check_time" default="1.5"/>
+    <arg name="crosswalk_stop_dist"  default="0.30"/>
+    <arg name="junction_conf"        default="0.35"/>
+    <!-- cross_lane에서 SLAM 맵으로 출발점까지 최단 경로 쪽(좌/우/후진)을 골라 복귀한다.
+         SLAM은 부하가 커서 기본적으로 관제 PC에서 실행한다 (control_pc_slam.launch.xml).
+         로봇에서 직접 돌리려면 run_slam_on_robot:=true, 복귀 기능 자체를 끄려면 enable_return_home:=false -->
+    <arg name="enable_return_home"   default="true"/>
+    <arg name="run_slam_on_robot"    default="false"/>
+    <arg name="start_pose_wait"      default="15.0"/>
+    <arg name="return_arrive_dist"   default="0.30"/>
+    <arg name="junction_bias_dist"   default="0.8"/>
+    <!-- 차선 추종: 기본(legacy_tracking=true)은 예전(잘 되던) 코드와 같은 추종이다.
+         heading_gain / lane_flip_fix / far_fallback 는 legacy_tracking:=false 일 때만 적용된다 (비교 시험용) -->
+    <arg name="legacy_tracking"      default="true"/>
+    <arg name="heading_gain"         default="0.6"/>
+    <arg name="lane_flip_fix"        default="true"/>
+    <arg name="far_fallback"         default="true"/>
+    <arg name="camera_config"        default="video"/>
+    <arg name="camera_warmup"        default="1.0"/>
+    <arg name="start_ramp_time"      default="2.0"/>
+    <arg name="junction_advance_dist" default="0.25"/>
+    <arg name="caution_speed_factor" default="0.5"/>
+    <arg name="collision_dist"      default="0.05"/>
+    <arg name="obstacle_dist"       default="0.35"/>
+    <arg name="yolo_imgsz"          default="320"/>
+    <arg name="yolo_conf"           default="0.50"/>
+    <arg name="enable_lcd"          default="true"/>
+    <arg name="lcd_every_n"         default="3"/>
+    <!-- 초음파 센서: 기본은 ADC 보드(pinky_sensor_adc, us_sensor/range).
+         GPIO TRIG/ECHO 센서를 쓰려면 run_adc_sensor:=false run_gpio_ultrasonic:=true ultrasonic_topic:=ultrasonic/range -->
+    <arg name="run_adc_sensor"       default="true"/>
+    <arg name="run_gpio_ultrasonic"  default="false"/>
+    <arg name="ultrasonic_topic"     default="us_sensor/range"/>
+    <!-- 실측: 10cm→0.07, 20cm→0.14 (실제 거리의 0.7배) → 배율 1/0.7 ≈ 1.43 -->
+    <arg name="ultrasonic_scale"     default="1.43"/>
+    <arg name="ultrasonic_offset"    default="0.0"/>
+    <arg name="ultrasonic_stop_dist" default="0.10"/>
+    <arg name="ultrasonic_trig_pin"  default="23"/>
+    <arg name="ultrasonic_echo_pin"  default="24"/>
+
+    <!-- 로봇에서 SLAM을 직접 실행하는 경우에만. 맵은 저장하지 않고 실행할 때마다 새로 만든다. -->
+    <group if="$(var run_slam_on_robot)">
+        <include file="$(find-pkg-share pinky_navigation)/launch/map_building.launch.xml"/>
+    </group>
+
+    <!-- LED 제어 노드: 자율주행과 함께 자동 시작 -->
+    <node pkg="pinky_lamp_control" exec="main_node" name="pinky_lamp_control" output="screen"/>
+
+    <!-- ADC 보드 센서(초음파/IR/배터리). bringup 의 battery_publisher 와 겹치지 않게 배터리 토픽은 옮겨 둔다.
+         이미 따로 실행 중이면 run_adc_sensor:=false -->
+    <node pkg="pinky_sensor_adc" exec="main_node" name="pinky_sensor_adc" output="screen" if="$(var run_adc_sensor)">
+        <remap from="batt_state" to="adc/batt_state"/>
+    </node>
+
+    <!-- US-016 초음파 센서 퍼블리셔 (TRIG/ECHO, lgpio 백엔드) - GPIO 로 배선한 경우에만 -->
+    <node pkg="pinky_autonomous" exec="ultrasonic_sensor" name="ultrasonic_sensor" output="screen" if="$(var run_gpio_ultrasonic)">
+        <param name="trig_pin"     value="$(var ultrasonic_trig_pin)"/>
+        <param name="echo_pin"     value="$(var ultrasonic_echo_pin)"/>
+        <param name="topic"        value="$(var ultrasonic_topic)"/>
+        <param name="max_range"    value="1.0"/>
+        <param name="min_range"    value="0.02"/>
+        <param name="publish_rate" value="10.0"/>
+    </node>
+
+    <node pkg="pinky_autonomous" exec="autonomous_drive" name="autonomous_drive" output="screen"
+          sigterm_timeout="10" sigkill_timeout="15">
+        <param name="model_path"          value="$(var model_path)"/>
+        <param name="drive_speed"         value="$(var drive_speed)"/>
+        <param name="crosswalk_min_area"   value="$(var crosswalk_min_area)"/>
+        <param name="crosswalk_check_time" value="$(var crosswalk_check_time)"/>
+        <param name="crosswalk_stop_dist"  value="$(var crosswalk_stop_dist)"/>
+        <param name="junction_conf"        value="$(var junction_conf)"/>
+        <param name="enable_return_home"   value="$(var enable_return_home)"/>
+        <param name="start_pose_wait"      value="$(var start_pose_wait)"/>
+        <param name="return_arrive_dist"   value="$(var return_arrive_dist)"/>
+        <param name="junction_bias_dist"   value="$(var junction_bias_dist)"/>
+        <param name="heading_gain"         value="$(var heading_gain)"/>
+        <param name="lane_flip_fix"        value="$(var lane_flip_fix)"/>
+        <param name="legacy_tracking"      value="$(var legacy_tracking)"/>
+        <param name="far_fallback"         value="$(var far_fallback)"/>
+        <param name="camera_config"        value="$(var camera_config)"/>
+        <param name="camera_warmup"        value="$(var camera_warmup)"/>
+        <param name="start_ramp_time"      value="$(var start_ramp_time)"/>
+        <param name="junction_advance_dist" value="$(var junction_advance_dist)"/>
+        <param name="caution_speed_factor" value="$(var caution_speed_factor)"/>
+        <param name="collision_dist"      value="$(var collision_dist)"/>
+        <param name="obstacle_dist"       value="$(var obstacle_dist)"/>
+        <param name="yolo_imgsz"          value="$(var yolo_imgsz)"/>
+        <param name="yolo_conf"           value="$(var yolo_conf)"/>
+        <param name="enable_lcd"           value="$(var enable_lcd)"/>
+        <param name="lcd_every_n"          value="$(var lcd_every_n)"/>
+        <param name="ultrasonic_topic"    value="$(var ultrasonic_topic)"/>
+        <param name="ultrasonic_scale"    value="$(var ultrasonic_scale)"/>
+        <param name="ultrasonic_offset"   value="$(var ultrasonic_offset)"/>
+        <param name="ultrasonic_stop_dist" value="$(var ultrasonic_stop_dist)"/>
+        <!-- 학습된 클래스 이름 -->
+        <param name="lane_classes"        value="['left_lane', 'right_lane']"/>
+        <param name="crosswalk_classes"   value="['crosswalk']"/>
+        <param name="junction_classes"    value="['cross_lane']"/>
+    </node>
+</launch>
