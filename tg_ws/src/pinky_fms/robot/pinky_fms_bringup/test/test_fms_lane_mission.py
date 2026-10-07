@@ -170,3 +170,77 @@ def test_sonar_zero_ignored_once_but_stops_after_n(mod, monkeypatch, cleanup):
     n.sonar_zero_stop = 0                    # 예전 동작: 항상 무시
     sonar(n, 0.0, 5)
     assert n._sonar_distance(time.monotonic()) == float('inf')
+
+
+# ---------- 관제 경로 모드 ----------
+ROUTE = {'points': [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]], 's_goal': 1.8, 'uturn': False,
+         'maneuvers': [{'node': 'J', 'x': 1.0, 'y': 0.0, 's_at': 1.0, 'radius': 0.2, 'turn': 'LEFT',
+                        'follow': 'RIGHT', 'follow_dist': 0.3}]}
+BACK = {'points': [[1.0, 0.8], [1.0, 0.0], [0.0, 0.0]], 's_goal': 1.8, 'uturn': True, 'maneuvers': []}
+
+
+def route_node(mod, monkeypatch, cleanup):
+    n = make_node(mod, monkeypatch)
+    cleanup.append(n)
+    monkeypatch.setattr(mod.AutonomousDriveNode, '_drive_loop', lambda self: None)
+    n._on_cmd(String(data=json.dumps({'id': 5, 'cmd': 'go', 'x': 1.0, 'y': 0.8, 'route': ROUTE,
+                                      'route_back': BACK, 'arrive_tol': 0.05})))
+    n.start_pose = (0.0, 0.0, 0.0)
+    return n
+
+
+def test_route_fields_are_used(mod, monkeypatch, cleanup):
+    n = route_node(mod, monkeypatch, cleanup)
+    assert n.track is n.route_out and n.route_back is not None and n.goal == (1.0, 0.8)
+    turns = []
+    monkeypatch.setattr(n, '_begin_turn', lambda choice, pose, now: turns.append(choice))
+    n.departing = True
+    n._plan_exit(time.monotonic())               # 출발 방향: 경로의 uturn=False → 그대로 출발 (지도 판단 안 함)
+    assert turns == ['straight']
+
+
+def test_route_maneuver_starts_on_zone_entry_and_cross_lane_only_confirms(mod, monkeypatch, cleanup):
+    n = route_node(mod, monkeypatch, cleanup)
+    pose = [(0.5, 0.0, 0.0)]
+    monkeypatch.setattr(n, '_current_pose', lambda: pose[0])
+    n.departing, n.return_phase, n.junction_latched = False, 'following', False
+    n._drive_loop()
+    assert n.lane_bias is None                   # 아직 J 구역 밖
+    pose[0] = (0.85, 0.0, 0.0)
+    n._drive_loop()
+    assert n.exit_choice == 'left' and n.lane_bias == 'right'          # 동작은 LEFT, 따라갈 테이프는 RIGHT
+    assert n.bias_dist == pytest.approx(0.15 + 0.3) and n.return_phase == 'following'
+    # cross_lane 이 보여도 갈림길 절차(정지·판단)를 시작하지 않고 확인만 기록
+    n.junction_frames = 0
+    for _ in range(5):
+        n._decide_state(time.monotonic(), 0.0, 0.9)
+    assert n.junction_latched is False and n.route_maneuver['confirmed'] is True
+
+
+def test_route_arrival_switches_to_route_back(mod, monkeypatch, cleanup):
+    n = route_node(mod, monkeypatch, cleanup)
+    pose = [(1.0, 0.5, 1.57)]
+    monkeypatch.setattr(n, '_current_pose', lambda: pose[0])
+    n.departing, n.return_phase = False, 'following'
+    n.track.update(0.9, 0.0)
+    n.track.done_maneuver()
+    n._drive_loop()
+    assert n.leg == 'outbound'                   # s=1.5, 아직 (반경 0.30 이면 이미 도착으로 봤을 거리)
+    pose[0] = (1.0, 0.77, 1.57)
+    n._drive_loop()
+    assert n.leg == 'inbound' and n.track is n.route_back and n.route_turn_pending
+    turns = []
+    monkeypatch.setattr(n, '_begin_turn', lambda choice, p, now: turns.append(choice))
+    n._plan_exit(time.monotonic())               # 돌아오는 길 uturn=True → 제자리 U턴
+    assert turns == ['back'] and not n.route_turn_pending
+
+
+def test_without_route_fields_old_behavior(mod, monkeypatch, cleanup):
+    n = make_node(mod, monkeypatch)
+    cleanup.append(n)
+    n._on_cmd(String(data=json.dumps({'id': 6, 'cmd': 'go', 'x': 1.0, 'y': 0.8})))
+    assert n.track is None and n.route_out is None
+    n.wall_grid = None
+    assert n._arrived_at((1.0, 0.6, 0.0), (1.0, 0.8), 0.30)            # 예전 반경 판정
+    n._on_cmd(String(data=json.dumps({'id': 7, 'cmd': 'go', 'x': 1.0, 'y': 0.8, 'route': {'points': 'bad'}})))
+    assert n.track is None and n.goal == (1.0, 0.8)                    # 잘못된 경로는 버리고 예전 방식

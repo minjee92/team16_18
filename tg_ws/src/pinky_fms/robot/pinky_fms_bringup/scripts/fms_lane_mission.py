@@ -34,11 +34,20 @@ pinky_autonomous 의 AutonomousDriveNode 를 수정하지 않고 상속해서 �
      (차선 추종·양보 이동 모두), 신호가 다시 오면 멈춘 시간만큼 시간 기준을 미루고 이어 간다.
   초음파 0 값: 0.02 m 미만 값은 센서 오류로 자주 나와 무시하지만, sonar_zero_stop_count 번 연속이면 앞에 붙은 사물로 보고 정지한다
      (0 이면 예전처럼 항상 무시).
+  관제 경로 모드 (lane_cmd 에 선택 필드 route / route_back 이 있을 때, 관제 pinky_fms_lane lane_route 가 붙인다):
+     - 경로 진행 거리 s 를 AMCL 위치로 계산한다 (lane_route_track.py). 필드가 없거나 잘못되면 아래 지도 방식 그대로.
+     - 갈림길: 경로의 다음 갈림길 구역(s_at - radius)에 들어오면 정해진 동작(STRAIGHT/LEFT/RIGHT)과 따라갈 테이프 쪽(follow),
+       거리(follow_dist)로 바로 차선 추종을 바꾼다 (멈추지 않음). YOLO cross_lane 은 확인용으로만 기록한다 (갈림길 동작을 시작하지 않음).
+     - 출발·복귀 방향: route.uturn / route_back.uturn 이면 제자리 U턴, 아니면 그대로 출발 (지도 판단 안 함).
+     - 도착: s 가 s_goal - arrive_tol 이상 (반경 판정 대신). 돌아오는 길은 route_back 으로 같은 방식. route_back 이 없으면
+       돌아오는 길은 예전 지도 방식.
   상태는 lane_status (std_msgs/String JSON) 로 5 Hz 발행 → 로봇 LCD(fms_lcd_status)와 관제가 표시한다.
   LCD 는 이 노드가 직접 쓰지 않는다 (launch 에서 enable_lcd:=false).
 """
 import json
 import math
+import os
+import sys
 import time
 
 import numpy as np
@@ -53,6 +62,9 @@ from std_msgs.msg import String
 from pinky_autonomous.autonomous_drive_node import (
     AutonomousDriveNode, LAMP_DRIVE, LAMP_STOP, STATE_COLLISION, STATE_DRIVING, STATE_CW_BLOCKED, STATE_OBSTACLE_STOP, STATE_RETURN_FAILED)
 from pinky_autonomous.route_planner import choose_exit
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))     # 같이 설치되는 lane_route_track.py
+from lane_route_track import RouteError, RouteTrack  # noqa: E402
 
 
 class FmsLaneMission(AutonomousDriveNode):
@@ -108,6 +120,17 @@ class FmsLaneMission(AutonomousDriveNode):
         self.link_hold_t = None                # 관제 신호가 끊겨 멈춘 시각 (None = 정상)
         self.sonar_zero_streak = 0
         self.create_subscription(String, '/fleet/lane_heartbeat', self._on_heartbeat, 10)
+        # 관제 경로 모드 (lane_cmd 의 route / route_back 선택 필드)
+        self.declare_parameter('route_arrive_tol', 0.05)       # lane_cmd 에 arrive_tol 이 없을 때 도착 여유 (m)
+        self.declare_parameter('route_off_dist', 0.25)         # 경로에서 이만큼 벗어난 상태가 1 s 넘으면 경고 (m)
+        self.route_arrive_tol = float(self.get_parameter('route_arrive_tol').value)
+        self.route_off_dist = float(self.get_parameter('route_off_dist').value)
+        self.route_out = self.route_back = self.track = None
+        self.route_turn_pending = False        # 목적지 도착 뒤 돌아오는 길 출발 방향을 경로로 정할 차례
+        self.route_maneuver = None             # 지금 하고 있는 갈림길 동작 (cross_lane 확인 기록용)
+        self.bias_dist_default = self.bias_dist
+        self.off_route_t = None
+        self.cross_note_t = 0.0
         self.create_timer(0.1, self._traffic_step)
         qos_map = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(OccupancyGrid, self.map_topic, self._on_wall_map, qos_map)
@@ -131,10 +154,26 @@ class FmsLaneMission(AutonomousDriveNode):
             return                      # 같은 명령 재전송 (관제는 수신 확인될 때까지 몇 번 보낸다)
         if goal is not None and not all(map(math.isfinite, goal)):
             return
+        route_out = route_back = None
+        if goal is not None and 'route' in d:
+            try:
+                tol = float(d.get('arrive_tol', self.route_arrive_tol))
+                route_out = RouteTrack(d['route'], tol)
+                if cmd == 'go' and 'route_back' in d:
+                    route_back = RouteTrack(d['route_back'], tol)
+            except (RouteError, ValueError, TypeError) as e:
+                self.get_logger().warn(f'lane_cmd 의 경로 필드를 쓸 수 없음 ({e}): 지도 방식으로 진행')
+                route_out = route_back = None
         self.cmd_id = cid
         self._reset_mission()
         if goal is not None:
             self.goal, self.result, self.one_way = goal, None, cmd == 'home'
+            self.route_out, self.route_back, self.track = route_out, route_back, route_out
+            if route_out is not None:
+                self.get_logger().info(
+                    f'🗺️ 관제 경로: 가는 길 {route_out.s_goal:.2f} m{" (출발 U턴)" if route_out.uturn else ""}, 갈림길 '
+                    + (', '.join(f'{m["node"]} {m["turn"]}/{m["follow"]}' for m in route_out.maneuvers) or '없음')
+                    + (f', 돌아오는 길 {route_back.s_goal:.2f} m' if route_back is not None else ''))
             self.get_logger().info(f'🎯 Lane Following 미션: 목적지 ({goal[0]:.2f}, {goal[1]:.2f}) {"편도" if self.one_way else "왕복"}')
         else:
             self.goal, self.result = None, 'CANCELED'
@@ -171,6 +210,8 @@ class FmsLaneMission(AutonomousDriveNode):
         return bool(self.wall_grid[0][r[ok], c[ok]].any())
 
     def _arrived_at(self, pose, target, radius):
+        if self.track is not None:
+            return self.track.arrived()          # 관제 경로 모드: 경로 진행 거리로 판정
         return math.hypot(pose[0] - target[0], pose[1] - target[1]) <= radius and not self._wall_between(pose, target)
 
     # ---------- 라이다 앞 사물 ----------
@@ -287,6 +328,9 @@ class FmsLaneMission(AutonomousDriveNode):
         self.prev_lane = {'left': None, 'right': None}
         self.departing = False
         self._traffic_clear()
+        self.route_out = self.route_back = self.track = None
+        self.route_turn_pending, self.route_maneuver, self.off_route_t = False, None, None
+        self.bias_dist = self.bias_dist_default
 
     # ---------- 출발 위치: 목적지를 받은 뒤의 AMCL(map) 위치 ----------
     def _try_record_start_pose(self):
@@ -314,6 +358,12 @@ class FmsLaneMission(AutonomousDriveNode):
 
     def _plan_exit(self, now):
         pose = self._current_pose()
+        if self.track is not None and (self.departing or self.route_turn_pending):
+            choice = 'back' if self.track.uturn else 'straight'
+            self.route_turn_pending = False
+            self.get_logger().info(f'🧭 {"출발" if self.departing else "복귀 출발"} 방향 (관제 경로): {choice}')
+            self._begin_turn(choice, pose, now)
+            return
         choice, reason = None, ''
         if self.latest_map is not None and pose is not None:
             m = self.latest_map
@@ -380,6 +430,8 @@ class FmsLaneMission(AutonomousDriveNode):
             return                      # 양보 동작 중: 차선 추종·앞 사물 정지·LOST 처리를 돌리지 않는다 (_traffic_step 이 움직임)
         if self._link_check(now):
             return
+        if self.track is not None:
+            self._route_step(now)
         if not self._waiting_for_start_pose(now) and self.return_phase not in ('arrived', 'failed'):
             pose = self._current_pose()
             in_junction = self.junction_latched and self.return_phase not in (None, 'following')
@@ -400,8 +452,63 @@ class FmsLaneMission(AutonomousDriveNode):
                 self.junction_latched, self.junction_frames, self.return_phase = False, 0, None
         super()._drive_loop()
 
+    # ---------- 관제 경로 모드 ----------
+    def _route_step(self, now):
+        """경로 진행 거리 갱신, 갈림길 구역에 들어오면 동작 시작, 경로 이탈 경고."""
+        if self.lane_bias is None and self.bias_dist != self.bias_dist_default:
+            self.bias_dist = self.bias_dist_default             # 갈림길 테이프 따라가기가 끝나면 원래 값으로
+        if self._waiting_for_start_pose(now) or self.return_phase in ('arrived', 'failed'):
+            return
+        pose = self._current_pose()
+        if pose is None:
+            return
+        s, lat = self.track.update(pose[0], pose[1])
+        if lat > self.route_off_dist:
+            self.off_route_t = self.off_route_t or now
+            if now - self.off_route_t > 1.0:
+                self.get_logger().warn(f'⚠️ 관제 경로에서 {lat:.2f} m 벗어남 (s={s:.2f} m)', throttle_duration_sec=3.0)
+        else:
+            self.off_route_t = None
+        rm = self.route_maneuver
+        if rm is not None and not rm['confirmed'] and not rm.get('warned') and now - rm['t'] > 5.0:
+            rm['warned'] = True
+            self.get_logger().info(f'ℹ️ 갈림길 {rm["node"]} 동작 뒤 5 s 동안 cross_lane 이 보이지 않음 (위치로 진행함, 확인만 못 함)')
+        in_turn = self.junction_latched and self.return_phase not in (None, 'following')
+        if in_turn or self.departing:
+            return
+        m = self.track.due_maneuver()
+        if m is not None:
+            self._route_maneuver(m, pose, now)
+
+    def _route_maneuver(self, m, pose, now):
+        choice = {'STRAIGHT': 'straight', 'LEFT': 'left', 'RIGHT': 'right'}[m['turn']]
+        self.track.done_maneuver()
+        self.route_maneuver = dict(m, t=now, confirmed=False)
+        self.exit_choice = choice
+        self._begin_turn(choice, pose, now)          # 직진·좌·우는 제자리 회전 없이 차선 추종으로 넘어간다
+        self.lane_bias = m['follow'].lower()        # 정해진 쪽 테이프만 따라간다
+        self.bias_t0, self.bias_pose = now, pose
+        self.bias_dist = max(0.0, m['s_at'] - self.track.s) + m['follow_dist']
+        self.get_logger().info(f'🔀 갈림길 {m["node"]} 구역 진입 (s={self.track.s:.2f} m): {m["turn"]}, '
+                               f'{m["follow"]} 테이프만 {self.bias_dist:.2f} m (관제 경로)')
+
+    def _decide_state(self, now, crosswalk_area, junction_width):
+        if self.track is not None and junction_width >= self.junction_min_width:
+            rm = self.route_maneuver
+            if rm is not None and not rm['confirmed'] and now - rm['t'] < 5.0:
+                rm['confirmed'] = True
+                self.get_logger().info(f'✅ 갈림길 {rm["node"]} cross_lane 확인 ({junction_width:.0%})')
+            elif now - self.cross_note_t > 3.0:
+                self.cross_note_t = now
+                self.get_logger().info(f'ℹ️ cross_lane 보임 ({junction_width:.0%}): 관제 경로 모드라 확인용으로만 씀')
+            junction_width = 0.0                     # 갈림길 동작은 위치로 시작한다 (YOLO 로 시작하지 않음)
+        super()._decide_state(now, crosswalk_area, junction_width)
+
     def _reach_goal(self, now):
         self.leg, self.leg_t0 = 'inbound', now
+        self.track = self.route_back                    # 없으면 돌아오는 길은 예전 지도 방식
+        self.route_turn_pending = self.track is not None
+        self.route_maneuver = None
         self.junction_latched, self.junction_frames = True, 0
         self.lane_bias = None
         self.return_phase, self.return_t0 = 'pause', now       # 바로 정지 → 지도로 출발점 쪽 방향 판단
@@ -586,7 +693,10 @@ class FmsLaneMission(AutonomousDriveNode):
                'localized': pose is not None, 'cmd_id': self.cmd_id,
                'pose': None if pose is None else [round(pose[0], 3), round(pose[1], 3), round(pose[2], 3)],
                'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.traffic_role,
-               'link_ok': self.link_hold_t is None}
+               'link_ok': self.link_hold_t is None,
+               'route': None if self.track is None else {
+                   's': round(self.track.s, 2), 's_goal': round(self.track.s_goal, 2), 'off': round(self.track.lat, 2),
+                   'next': self.track.next_node()}}
         self.status_pub.publish(String(data=json.dumps(msg)))
 
 
