@@ -24,7 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 import yaml
 
-TURNS = ('STRAIGHT', 'LEFT', 'RIGHT')       # pinky_fms_lane_interfaces/LaneManeuver 상수와 같은 값
+TURNS = ('STRAIGHT', 'LEFT', 'RIGHT')       # 갈림길 동작 (lane_cmd JSON 의 maneuvers[].turn 값)
 FOLLOWS = ('LEFT', 'RIGHT')
 SOURCES = ('estimate', 'tape', 'robot')     # 뒤로 갈수록 우선
 SOURCE_LABELS = {'estimate': '추정', 'tape': '줄자', 'robot': '로봇 기록'}
@@ -109,7 +109,7 @@ class Leg:
 
 @dataclass
 class Maneuver:
-    """갈림길 동작 (LaneManeuver 와 같은 필드)."""
+    """갈림길 동작 (lane_cmd JSON 의 maneuvers 한 항목과 같은 필드)."""
     node_id: str
     s_at: float
     turn: str

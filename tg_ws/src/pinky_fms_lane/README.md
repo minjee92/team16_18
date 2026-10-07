@@ -5,7 +5,6 @@ Nav2 대신 카메라 차선 인식으로 Pinky 2대를 GUI 에서 클릭한 목
 
 | 폴더 | 어디서 | 내용 |
 |---|---|---|
-| `interfaces/pinky_fms_lane_interfaces` | 관제 PC·로봇 | `LaneCommand`, `LaneStatus`, `LaneManeuver` 메시지 |
 | `control_pc/pinky_fms_lane` | 관제 PC | 코스 모델(`course.py`), 코스 파일(`course/`), 도구: `draw_course`, `course_tape`, `make_lane_map`, `send_initial_pose`, `record_course_points` |
 | `robot/pinky_fms_lane_robot` | 로봇 | 위치 추정만 띄우는 launch(`robot_localization`), 녹화용 카메라 화면(`robot_camera_view`), 통신 설정 스크립트(`fms_robot_env.sh`) |
 
@@ -49,7 +48,7 @@ cd ~/team16_18 && git checkout <작업 브랜치>              # 예: feat/tg-fm
 cd ~/team16_18/tg_ws && source /opt/ros/jazzy/setup.bash && source ~/pinky_pro/install/setup.bash
 colcon build --packages-select pinky_fms_lane_robot \
   --packages-ignore pinky_fms_interfaces pinky_fms_core pinky_fms_traffic pinky_fms_bringup pinky_fms_sim \
-                    pinky_autonomous pinky_fms_lane pinky_fms_lane_interfaces
+                    pinky_autonomous pinky_fms_lane
 ros2 pkg prefix teleop_twist_keyboard || sudo apt install ros-jazzy-teleop-twist-keyboard
 ```
 - `--packages-ignore` 로 나머지 패키지(관제 PC·시뮬용, 그리고 `~/pinky_pro` 에 이미 있는 것과 이름이 같은 것)를 이 작업공간에서 아예 빼서, `~/pinky_pro` 에 빌드된 팀원 패키지를 그대로 쓴다. 저장소에 패키지가 늘면 `colcon list --names-only` 로 확인해 목록에 더한다.
