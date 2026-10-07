@@ -294,7 +294,7 @@ def run(args):
     from std_srvs.srv import Empty
     from tf2_msgs.msg import TFMessage
 
-    from pinky_fms_lane.course import Course
+    from pinky_fms_lane.course import SOURCE_LABELS, Course
 
     targets = parse_targets(args.targets)
     course = Course.load(args.course)
@@ -339,7 +339,8 @@ def run(args):
 
     all_ok = True
     for ns, (name, x, y, yaw, source) in starts.items():
-        print(f'[{ns}] 출발점 {name} ({source}): x {x:.3f}  y {y:.3f}  yaw {math.degrees(yaw):.0f}°', flush=True)
+        print(f'[{ns}] 출발점 {name} (출처 {SOURCE_LABELS.get(source, source)} {source}): '
+              f'x {x:.3f}  y {y:.3f}  yaw {math.degrees(yaw):.0f}°', flush=True)
         end = time.monotonic() + args.timeout
         while node.count_subscribers(f'/{ns}/initialpose') < 1 and time.monotonic() < end:
             spin_for(0.2)

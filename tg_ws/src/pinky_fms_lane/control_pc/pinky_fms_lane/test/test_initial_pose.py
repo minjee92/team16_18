@@ -13,7 +13,7 @@ from pinky_fms_lane.initial_pose import (
 COURSE = {
     'points': {'J': {'x': 0.0, 'y': 1.0}, 'TE': {'x': -1.0, 'y': 1.0}, 'NE': {'x': 1.0, 'y': 1.0},
                'SE': {'x': 1.0, 'y': 0.0}, 'SW': {'x': 0.0, 'y': 0.0},
-               'R1': {'x': -0.5, 'y': 1.0, 'yaw': 0.0, 'source': 'measured'}, 'NOYAW': {'x': 0.5, 'y': 0.0}},
+               'R1': {'x': -0.5, 'y': 1.0, 'yaw': 0.0}, 'NOYAW': {'x': 0.5, 'y': 0.0}},
     'edges': {'tail': {'points': ['J', 'TE']}, 'loop': {'points': ['J', 'NE', 'SE', 'SW', 'J'], 'oneway': True}},
     'junctions': {'J': {'moves': [
         {'from': 'tail', 'to': 'loop', 'turn': 'STRAIGHT', 'follow': 'LEFT', 'follow_dist': 0.3},
@@ -32,7 +32,7 @@ def test_parse_targets():
 
 def test_start_pose_reads_course_points():
     c = Course(copy.deepcopy(COURSE))
-    assert start_pose(c, 'R1') == (-0.5, 1.0, 0.0, 'measured')
+    assert start_pose(c, 'R1') == (-0.5, 1.0, 0.0, 'estimate')      # 출처도 함께 돌려준다
     with pytest.raises(ValueError, match='yaw'):
         start_pose(c, 'NOYAW')                      # 방향이 없는 점은 출발점이 될 수 없다
     with pytest.raises(ValueError, match='없음'):

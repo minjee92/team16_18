@@ -1,14 +1,18 @@
 # 차선 코스: mission4_3_clean_1cm 지도 위의 테이프 길 (map 좌표, m)
 #
-# source: estimate = 추정값. course_ref/course_overlay_mission4_3.png 추정도와 위에서 찍은 사진으로 어림 (오차 5~10 cm)
-#         measured = 실측값. 로봇을 차선 위에 세워 기록 도구로 잰 값. measured 파일에 저장되고, 같은 이름의 추정값을 덮어쓴다
-# 코드에는 좌표가 없다. 코스가 바뀌면 이 파일만 고친다.
+# 점 좌표의 출처(source). 같은 이름이면 우선순위가 높은 쪽이 덮어쓴다: robot > tape > estimate
+#   estimate = 추정값 (이 파일). 추정도와 사진으로 어림 (오차 5~10 cm), 또는 아래 규칙으로 정한 설계값
+#   tape     = 줄자 실측 (tape: 파일). 벽에서 잰 원본 값으로 계산한다. 꺾이는 위치만 추정인 점은 estimate 로 남는다
+#   robot    = 로봇 기록 (robot: 파일). 로봇을 차선 위에 세워 기록 도구로 잰 값 (1.4b-2)
+# 코드에는 좌표가 없다. 코스가 바뀌면 이 파일과 줄자 파일만 고친다.
+# 줄자 파일이 덮어쓰는 점(J, T_END, T_A~T_D, NE, SE, SW, C1, C2)의 아래 값은 줄자 파일이 없을 때만 쓰는 예전 추정값이다.
 #
 # 간선(edges) 의 points 순서가 + 방향이다. oneway 간선은 + 방향으로만 다닌다.
 # 고리를 반시계방향으로 바꾸려면 loop 의 points 순서를 뒤집고 junctions.J.moves 를 그 방향에 맞게 다시 정해야 한다.
 
 map: mission4_3_clean_1cm            # 이 좌표가 맞는 지도 이름 (확인용)
-measured: mission4_3_clean_1cm.measured.yaml   # 실측값 파일 (이 파일 기준 상대 경로). 없으면 추정값만 쓴다
+tape: mission4_3_clean_1cm.tape.yaml       # 줄자 실측 파일 (사람이 씀). 같은 이름의 추정값을 덮어쓴다
+robot: mission4_3_clean_1cm.robot.yaml     # 로봇 기록 파일 (기록 도구가 씀, 1.4b-2). 없으면 건너뛴다. 줄자보다 우선
 
 params:
   snap_max: 0.15             # 클릭한 목표를 길 위로 맞출 최대 거리 (m). 더 멀면 거부
@@ -16,7 +20,7 @@ params:
   wait_keepout: 0.15         # 대기 지점 앞뒤 이 거리 안에는 목표를 두지 않는다 (m)
   uturn_clearance: 0.10      # 제자리 U턴에 필요한 벽까지 최소 거리 (m, 지도로 확인)
   uturn_penalty: 0.5         # 경로를 고를 때 U턴 1번을 이만큼(m) 먼 길로 친다
-  lane_width: 0.14           # 테이프 안쪽 길 폭 (m, 추정. 실측 필요)
+  lane_width: 0.14           # 테이프 안쪽 길 폭 (m, 추정). 줄자 파일의 값(0.166)이 덮어쓴다
 
 points:
   # 갈림길과 막다른 끝
@@ -31,20 +35,23 @@ points:
   NE:     {x: 1.99, y: 0.975, source: estimate}
   SE:     {x: 1.99, y: 0.10,  source: estimate}
   SW:     {x: 1.15, y: 0.10,  source: estimate}
-  # 대기 지점 (후보. 확정 아님)
-  W_LOOP: {x: 1.15, y: 0.66,  source: estimate}   # 고리 왼변, J 아래 약 0.32 m. 꼬리로 들어가거나 J 를 지나기 전에 기다리는 곳
-  W_TAIL: {x: 0.75, y: 0.985, source: estimate}   # 꼬리 윗길, 횡단보도 C1 서쪽. 꼬리에서 나가기 전에 기다리는 곳
+  # 대기 지점·출발점 = 설계값 (estimate). 줄자 좌표(2026-10-07)에 맞춰 아래 규칙으로 정했다. 줄자·로봇 값이 바뀌면 다시 정한다
+  #   로봇 반 길이 0.06 m (nav2_params footprint 12 x 12 cm), 여유 0.05 m
+  # 대기 지점
+  W_LOOP: {x: 1.152, y: 0.638, source: estimate}  # 고리 왼변. J(y 0.948) 아래로 J 구역 0.20 + 반 길이 0.06 + 여유 0.05 = 0.31 m. 꼬리로 들어가거나 J 를 지나기 전에 기다리는 곳
+  W_TAIL: {x: 0.733, y: 0.949, source: estimate}  # 꼬리 윗길. C1(x 0.943) 구역 서쪽 끝 0.843 에서 반 길이 + 여유 0.11 m 서쪽. 꼬리에서 나가기 전에 기다리는 곳
   # 횡단보도
   C1:     {x: 0.96, y: 0.99,  source: estimate}   # 꼬리 윗길, J 바로 서쪽
   C2:     {x: 1.99, y: 0.51,  source: estimate}   # 고리 오른변 가운데
   # 출발점 (초기 위치 지정용. yaw = 로봇이 보는 방향, rad. 0 = 지도 +x(오른쪽), 3.14 = 왼쪽)
-  R1:     {x: 0.78, y: 0.25, yaw: 3.14, source: estimate}   # 로봇 1(검은 로봇), 꼬리 끝, 출구(서쪽)를 봄
-  R2:     {x: 1.99, y: 0.10, yaw: 3.14, source: estimate}   # 로봇 2, 고리 SE 빨간 테이프. 시계방향이면 서쪽(아랫변 방향)을 봐야 함
+  R1:     {x: 0.783, y: 0.253, yaw: 3.14, source: estimate}   # 로봇 1(검은 로봇), 꼬리 끝, 출구(서쪽)를 봄. T_END(x 0.953)에서 막다른 끝 구역 0.15 + 0.02 m 밖 → 목표로도 쓸 수 있다. 지도상 벽까지 0.17 m (U턴 0.10 m 이상)
+  R2:     {x: 2.0005, y: 0.135, yaw: 3.14, source: estimate}  # 로봇 2, 고리 SE 빨간 테이프 = SE 모서리 (줄자). 시계방향이면 서쪽(아랫변 방향)을 봐야 함
 
 edges:
   tail:                      # 꼬리: J 에서 꼬리 끝까지. 양방향 1차선 막다른 길
     points: [J, T_A, T_B, T_C, T_D, T_END]
     oneway: false
+    corner_round: 0.08       # GUI 표시용 지도(make_lane_map)에서만 꺾이는 곳을 이만큼 둥글게 그린다 (m). 경로 계산에는 안 씀
   loop:                      # 고리: J 에서 시계방향 한 바퀴 (윗변 → 오른변 → 아랫변 → 왼변). 일방통행
     points: [J, NE, SE, SW, J]
     oneway: true

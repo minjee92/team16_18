@@ -4,7 +4,9 @@
   - locate()    : 로봇 위치·방향 → 어느 길의 어디쯤인지 (Location)
   - snap_goal() : 클릭한 목표 → 길 위의 점 (멀면 거부, 금지 구역 안이면 구역 밖으로 옮김)
   - plan()      : 시작 → 목표 경로 (꺾은선, 갈림길 동작, 출발 U턴 여부) (Route)
-코스 모양(좌표)은 코드에 없고 모두 설정 파일에 있다. 실측값은 따로 기록한 파일(measured)이 추정값을 덮어쓴다.
+코스 모양(좌표)은 코드에 없고 모두 설정 파일에 있다.
+점 좌표의 출처(source)와 우선순위: robot(로봇 기록 파일) > tape(줄자 파일) > estimate(코스 설정의 추정값).
+같은 이름의 점은 우선순위가 높은 파일 값이 덮어쓴다. 줄자 파일은 원본 측정값에서 다시 계산한다 (tape.py).
 
 용어
   간선(edge) : 길 가운데 선 꺾은선. points 순서가 + 방향. oneway 면 + 방향으로만 다닌다.
@@ -24,7 +26,8 @@ import yaml
 
 TURNS = ('STRAIGHT', 'LEFT', 'RIGHT')       # pinky_fms_lane_interfaces/LaneManeuver 상수와 같은 값
 FOLLOWS = ('LEFT', 'RIGHT')
-SOURCES = ('estimate', 'measured')
+SOURCES = ('estimate', 'tape', 'robot')     # 뒤로 갈수록 우선
+SOURCE_LABELS = {'estimate': '추정', 'tape': '줄자', 'robot': '로봇 기록'}
 ALIGN_MIN = 0.5      # 로봇 방향과 길 방향의 cos 이 이보다 작으면(60° 넘게 어긋남) 방향을 모른다고 본다
 WAIT_ON_ROAD = 0.05  # 대기 지점은 길 가운데 선에서 이 거리(m) 안에 있어야 한다
 EPS = 1e-6
@@ -57,8 +60,8 @@ class Point:
     x: float
     y: float
     yaw: float = None            # 출발점처럼 방향이 있는 점만 (rad)
-    source: str = 'estimate'     # estimate | measured
-    stamp: str = ''              # 기록 시각 (measured)
+    source: str = 'estimate'     # estimate | tape | robot
+    stamp: str = ''              # 기록 시각 (robot)
 
 
 @dataclass
@@ -141,8 +144,9 @@ class Route:
 
 
 class Edge:
-    def __init__(self, name, point_names, pts, oneway):
+    def __init__(self, name, point_names, pts, oneway, corner_round=0.0):
         self.name = name
+        self.corner_round = float(corner_round)    # GUI 표시용 지도에서만 꺾이는 곳을 둥글게 (m). 경로 계산에는 안 씀
         self.names = list(point_names)
         self.oneway = bool(oneway)
         self.pts = np.asarray(pts, float)
@@ -193,26 +197,20 @@ class Course:
         data = data or {}
         self.map_name = data.get('map', '')
         self.params = dict(DEFAULT_PARAMS)
-        for k, v in (data.get('params') or {}).items():
-            if k not in DEFAULT_PARAMS:
-                problems.append(f'params.{k}: 모르는 설정')
-            else:
-                self.params[k] = float(v)
+        self.param_sources = {k: 'default' for k in DEFAULT_PARAMS}
+        self._set_params(data.get('params'), 'estimate', '', problems)
 
         self.points = {}
         for name, v in (data.get('points') or {}).items():
+            if isinstance(v, dict) and v.get('source', 'estimate') != 'estimate':
+                problems.append(f'점 {name}: 코스 설정의 점은 추정값(estimate)만. 줄자·로봇 값은 각자 파일에 둔다')
             self._add_point(name, v, 'estimate', problems)
-        self.measured_file = ''
-        if data.get('measured'):
-            self.measured_file = os.path.join(base_dir, data['measured'])
-            if os.path.exists(self.measured_file):
-                with open(self.measured_file, encoding='utf-8') as f:
-                    measured = (yaml.safe_load(f) or {}).get('points') or {}
-                for name, v in measured.items():
-                    if name not in self.points:
-                        problems.append(f'실측 파일의 점 {name}: 코스 설정에 없는 이름')
-                    else:
-                        self._add_point(name, v, 'measured', problems)
+        # 우선순위가 낮은 것부터 덮어쓴다: 줄자 → 로봇 기록
+        self.files = {}
+        for src in ('tape', 'robot'):
+            self.files[src] = os.path.join(base_dir, data[src]) if data.get(src) else ''
+            if self.files[src] and os.path.exists(self.files[src]):
+                self._override(src, self.files[src], problems)
 
         self.edges = {}
         for name, v in (data.get('edges') or {}).items():
@@ -225,7 +223,7 @@ class Course:
             if any(math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-3 for a, b in zip(pts, pts[1:])):
                 problems.append(f'간선 {name}: 연속한 두 점이 같은 위치')
                 continue
-            e = Edge(name, names, pts, (v or {}).get('oneway', False))
+            e = Edge(name, names, pts, (v or {}).get('oneway', False), (v or {}).get('corner_round', 0.0))
             if e.node_a == e.node_b and not e.oneway:
                 problems.append(f'간선 {name}: 처음과 끝이 같은(한 바퀴 도는) 간선은 일방통행이어야 함')
             self.edges[name] = e
@@ -255,13 +253,50 @@ class Course:
         return cls(data, base_dir=os.path.dirname(os.path.abspath(path)))
 
     # ---------- 읽기 / 검사 ----------
+    def _set_params(self, values, src, where, problems):
+        for k, v in (values or {}).items():
+            if k not in DEFAULT_PARAMS:
+                problems.append(f'{where}params.{k}: 모르는 설정')
+            else:
+                self.params[k] = float(v)
+                self.param_sources[k] = src
+
+    def _override(self, src, path, problems):
+        where = f'{SOURCE_LABELS[src]} 파일({os.path.basename(path)})의 '
+        if src == 'tape':
+            from pinky_fms_lane.tape import Tape, TapeError, load_raw
+            try:
+                tape = Tape(load_raw(path))
+            except TapeError as e:
+                problems.extend(where + p for p in e.problems)
+                return
+            points, params = tape.points, tape.params
+        else:
+            with open(path, encoding='utf-8') as f:
+                d = yaml.safe_load(f) or {}
+            points, params = d.get('points') or {}, d.get('params') or {}
+        self._set_params(params, src, where, problems)
+        for name, v in points.items():
+            old = self.points.get(name)
+            if old is None:
+                problems.append(f'{where}점 {name}: 코스 설정에 없는 이름')
+                continue
+            v = dict(v)
+            if src == 'robot':
+                v['source'] = 'robot'
+            elif v.get('source') not in ('estimate', 'tape'):
+                v['source'] = 'tape'
+            if 'yaw' not in v and old.yaw is not None:
+                v['yaw'] = old.yaw                         # 줄자는 방향을 재지 않는다: 코스 설정의 방향을 유지
+            self._add_point(name, v, src, problems)
+
     def _add_point(self, name, v, default_source, problems):
         if not isinstance(v, dict) or 'x' not in v or 'y' not in v:
             problems.append(f'점 {name}: x, y 가 필요함')
             return
         src = v.get('source', default_source)
         if src not in SOURCES:
-            problems.append(f'점 {name}: source 는 estimate 또는 measured')
+            problems.append(f'점 {name}: source 는 {", ".join(SOURCES)} 중 하나')
         yaw = v.get('yaw')
         self.points[name] = Point(name, float(v['x']), float(v['y']), None if yaw is None else float(yaw),
                                   src, str(v.get('stamp', '')))
@@ -329,6 +364,10 @@ class Course:
 
     def estimate_points(self):
         return [p.name for p in self.points.values() if p.source == 'estimate']
+
+    def source_summary(self):
+        """출처별 점 이름 {source: [이름]} (우선순위 높은 것부터)."""
+        return {src: [p.name for p in self.points.values() if p.source == src] for src in reversed(SOURCES)}
 
     # ---------- 위치 ----------
     def locate(self, x, y, yaw=None, max_dist=None):

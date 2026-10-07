@@ -6,7 +6,8 @@
   --course 를 생략하면 설치된 기본 코스(share/pinky_fms_lane/course/mission4_3_clean_1cm.course.yaml)를 쓴다.
   --out 을 생략하면 FMS_OUTPUT_DIR, 없으면 $FMS_WS/outputs 에 저장한다. 파일 이름: result_course_<YYYYmmdd_HHMMSS>.png
   --example 은 "출발점:간선:간선 길이 비율" 목록. 비율로 목표를 정하므로 좌표가 실측값으로 바뀌어도 그대로 쓸 수 있다. 빈 문자열이면 경로를 그리지 않는다.
-  추정값(source: estimate) 점은 속이 빈 표시로, 실측값은 채운 표시로 그린다.
+  점 표시 모양은 출처마다 다르다: 추정(estimate) = 속이 빔, 줄자(tape) = 회색, 로봇 기록(robot) = 검정.
+  이름 옆에도 출처를 적는다.
 """
 import argparse
 import datetime
@@ -17,11 +18,12 @@ import sys
 import numpy as np
 import yaml
 
-from pinky_fms_lane.course import Course, PlanError
+from pinky_fms_lane.course import SOURCE_LABELS, Course, PlanError
 
 DEFAULT_COURSE = 'mission4_3_clean_1cm.course.yaml'
 EDGE_COLORS = {'tail': '#1b9e77', 'loop': '#2c7fb8'}
 ROUTE_COLORS = ['#d95f02', '#7570b3', '#e7298a', '#66a61e']
+SOURCE_FILL = {'estimate': 'none', 'tape': '#9a9a9a', 'robot': '#111111'}
 
 
 def default_course_path():
@@ -82,6 +84,11 @@ def parse_examples(text, course):
     return out
 
 
+def source_counts(course):
+    """'로봇 기록 0 · 줄자 7 · 추정 8' (우선순위 높은 것부터)."""
+    return ' · '.join(f'{SOURCE_LABELS[src]} {len(names)}' for src, names in course.source_summary().items())
+
+
 def draw(course, map_yaml, out_path, examples):
     import matplotlib
     matplotlib.use('Agg')
@@ -134,12 +141,11 @@ def draw(course, map_yaml, out_path, examples):
         ax.add_patch(Circle((loc.x, loc.y), course.params['wait_keepout'], fill=False, ls=':', lw=1.2,
                             color='#6a3d9a', zorder=6))
 
-    # 이름 붙은 점: 추정값 = 빈 표시, 실측값 = 채운 표시
+    # 이름 붙은 점: 출처별 채우기 (추정 = 빈 표시, 줄자 = 회색, 로봇 기록 = 검정)
     kinds = {n: 'D' for n in course.waits}
     kinds.update({n: 's' for n in course.crosswalks})
     kinds.update({n: 'o' for n in course.junctions})
     for p in course.points.values():
-        est = p.source == 'estimate'
         if p.yaw is not None:                              # 출발점: 방향 화살표
             ax.annotate('', xy=(p.x + 0.12 * math.cos(p.yaw), p.y + 0.12 * math.sin(p.yaw)), xytext=(p.x, p.y),
                         arrowprops={'arrowstyle': '-|>', 'color': '#111111', 'lw': 2.0}, zorder=8)
@@ -147,8 +153,8 @@ def draw(course, map_yaml, out_path, examples):
         else:
             marker = kinds.get(p.name, '.')
         ax.scatter([p.x], [p.y], s=46, marker=marker, zorder=9, linewidths=1.4, edgecolors='#111111',
-                   facecolors='none' if est else '#111111')
-        ax.annotate(p.name + (' (추정)' if est else ''), (p.x, p.y), xytext=(5, 6), textcoords='offset points',
+                   facecolors=SOURCE_FILL[p.source])
+        ax.annotate(f'{p.name} ({SOURCE_LABELS[p.source]})', (p.x, p.y), xytext=(5, 6), textcoords='offset points',
                     fontsize=8.5, zorder=10,
                     bbox={'boxstyle': 'round,pad=0.15', 'fc': 'white', 'ec': 'none', 'alpha': 0.75})
 
@@ -172,18 +178,21 @@ def draw(course, map_yaml, out_path, examples):
                         xytext=(12, -16 - 14 * i), textcoords='offset points', fontsize=8.5, color=color, zorder=10,
                         bbox={'boxstyle': 'round,pad=0.15', 'fc': 'white', 'ec': color, 'alpha': 0.85})
 
-    n_est = len(course.estimate_points())
-    title = f'코스 확인: {course.map_name or os.path.basename(map_yaml)}'
-    title += f'  — 추정값 {n_est}개 포함 (속이 빈 점, 실측 전 확인용)' if n_est else '  — 모두 실측값'
+    title = f'코스 확인: {course.map_name or os.path.basename(map_yaml)}  — 점 출처 ' + source_counts(course)
+    lw_src = SOURCE_LABELS.get(course.param_sources['lane_width'], '기본값')
+    title += f', 길 폭 {course.params["lane_width"]:.3f} m ({lw_src})'
     ax.set_title(title, fontsize=12)
     ax.set_xlabel('map x [m]')
     ax.set_ylabel('map y [m]')
     ax.grid(True, lw=0.4, alpha=0.5)
     ax.plot([], [], color='#e41a1c', lw=4.5, alpha=0.35, label='목표 금지 구간 (갈림길·대기·횡단보도·막다른 끝)')
     ax.scatter([], [], s=9, color='#984ea3', label=f'U턴 공간 부족 (벽까지 < {course.params["uturn_clearance"]:.2f} m)')
+    for src, fill in SOURCE_FILL.items():
+        ax.scatter([], [], s=46, marker='o', linewidths=1.4, edgecolors='#111111', facecolors=fill,
+                   label=f'점 출처: {SOURCE_LABELS[src]} ({src})')
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.09), ncol=3, fontsize=8.5, framealpha=0.9)
     fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
 
@@ -203,9 +212,11 @@ def main(argv=None):
     os.makedirs(args.out, exist_ok=True)
     out_path = os.path.join(args.out, f'result_course_{datetime.datetime.now():%Y%m%d_%H%M%S}.png')
     draw(course, args.map, out_path, parse_examples(args.example, course))
-    est = course.estimate_points()
     print(f'[draw_course] 저장: {out_path}')
-    print(f'[draw_course] 추정값 {len(est)}개: {", ".join(est)}' if est else '[draw_course] 모두 실측값')
+    print(f'[draw_course] 점 출처: {source_counts(course)} (우선순위 로봇 기록 > 줄자 > 추정)')
+    for src, names in course.source_summary().items():
+        if names:
+            print(f'[draw_course]   {SOURCE_LABELS[src]}({src}): {", ".join(names)}')
     return 0
 
 

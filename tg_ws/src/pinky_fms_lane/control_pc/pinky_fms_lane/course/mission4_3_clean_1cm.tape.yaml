@@ -1,0 +1,53 @@
+# 줄자 실측 (사람이 쓰는 파일). 코스 설정 mission4_3_clean_1cm.course.yaml 의 tape: 가 이 파일을 가리킨다.
+# 우선순위: robot(로봇 기록, *.robot.yaml) > tape(이 파일) > estimate(코스 설정의 추정값)
+#
+# 좌표는 읽을 때마다 아래 원본 측정값(cm)과 벽 면 위치(m)로 다시 계산한다 (pinky_fms_lane/tape.py).
+# 지도가 바뀌면 walls 의 value 만 고치면 된다. 새 지도에서 벽 면을 다시 재 보려면:
+#   ros2 run pinky_fms_lane course_tape --map <새 지도.yaml>
+# (고칠 값과 바뀌는 좌표만 보여 주고 이 파일은 고치지 않는다)
+#
+# 잰 날: 2026-10-07. 아레나 안쪽 233 x 128 cm, 상자 쪽 방 가로 126 cm.
+# 지도(clean 1cm)는 230 x 120 cm, 상자 쪽 방 122 cm 로 작다. 그래서 길마다 가장 가까운 벽을 기준으로 잰다
+# (AMCL 도 가까운 벽에 맞춰 위치를 잡으므로 길 근처에서는 좌표가 맞는다).
+
+map: mission4_3_clean_1cm
+
+walls:   # 벽 안쪽 면 (map 좌표, m). clean 지도 픽셀 가장자리로 잰 값. probe = 지도에서 다시 잴 때 시작점과 방향(벽 쪽)
+  top:          {value: 1.144,  probe: {x: 0.50, y: 0.60, dir: up,    span: 0.30}}
+  bottom:       {value: -0.056, probe: {x: 0.50, y: 0.30, dir: down,  span: 0.30}}
+  left:         {value: -0.117, probe: {x: 0.30, y: 0.60, dir: left,  span: 0.30}}
+  right:        {value: 2.183,  probe: {x: 1.80, y: 0.60, dir: right, span: 0.30}}
+  center_left:  {value: 0.953,  probe: {x: 0.60, y: 0.15, dir: right, span: 0.10}}   # 가운데 벽 왼쪽 면 (꼬리 아랫길 끝)
+  center_right: {value: 0.963,  probe: {x: 1.10, y: 0.15, dir: left,  span: 0.10}}   # 가운데 벽 오른쪽 면 (고리 왼변 쪽)
+
+roads:   # 원본 측정 (cm): 벽 면에서 가까운 테이프 안쪽까지 a, 먼 테이프 안쪽까지 b. num = 측정 번호 (no 는 YAML 에서 false 로 읽혀서 num)
+  tail_top:    [{num: 1, wall: top, a: 11.1, b: 27.5}]                   # 꼬리 윗길
+  loop_top:    [{num: 2, wall: top, a: 11.4, b: 28.4}]                   # 고리 윗변
+  tail_left:                                                             # 꼬리 왼쪽 세로 길. at = 잰 곳의 y (어림, m)
+    - {num: 3, wall: left, a: 10.9, b: 24.0, at: 0.75}
+    - {num: 4, wall: left, a: 11.8, b: 25.5, at: 0.45}
+  tail_bottom: [{num: 5, wall: bottom, a: 22.8, b: 39.0}]                # 꼬리 아랫길 (9번: 테이프가 가운데 벽까지 이어짐)
+  loop_left:   [{num: 6, wall: center_right, a: 10.6, b: 27.2}]          # 고리 왼변
+  loop_right:  [{num: 7, wall: right, a: 10.0, b: 26.5}]                 # 고리 오른변
+  loop_bottom: [{num: 8, wall: bottom, a: 10.8, b: 27.4}]                # 고리 아랫변
+
+marks:   # 원본 측정 (cm): 벽 면에서 횡단보도 가까운 끝까지 dist, 횡단보도 길이 length
+  C1_x: {num: 10, wall: left, dist: 100.0, length: 12.0}
+  C2_y: {num: 11, wall: bottom, dist: 60.5, length: 12.0}
+
+params:
+  lane_width: 0.166   # 길 폭 (m). 대부분 16.2~17.0 cm. 꼬리 왼쪽 길(3, 4번)만 13.1~13.7 cm (위 원본 값 참고)
+
+points:   # x, y = walls/roads/marks 이름(목록이면 평균) 또는 숫자(추정). 숫자가 있으면 source 는 estimate
+  J:     {x: loop_left,   y: [tail_top, loop_top]}   # 꼬리 윗길과 고리 윗변이 만나는 곳
+  NE:    {x: loop_right,  y: loop_top}
+  SE:    {x: loop_right,  y: loop_bottom}
+  SW:    {x: loop_left,   y: loop_bottom}
+  T_END: {x: center_left, y: tail_bottom}            # 꼬리 아랫길이 가운데 벽에 닿는 곳
+  C1:    {x: C1_x,        y: tail_top}
+  C2:    {x: loop_right,  y: C2_y}
+  # 꼬리 꺾이는 점: 길을 가로지르는 위치는 줄자, 꺾이는 위치(숫자)는 추정도 비율 → estimate
+  T_A:   {x: 0.199,       y: tail_top}
+  T_B:   {x: tail_left,   y: 0.822}
+  T_C:   {x: tail_left,   y: 0.328}
+  T_D:   {x: 0.197,       y: tail_bottom}

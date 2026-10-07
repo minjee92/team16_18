@@ -73,25 +73,68 @@ def test_loads_edges_and_waits(course):
     assert len(course.estimate_points()) == len(BASE['points'])     # source 를 안 적으면 추정값
 
 
-def test_measured_file_overrides_estimates(tmp_path):
-    data = copy.deepcopy(BASE)
-    data['measured'] = 'm.measured.yaml'
-    (tmp_path / 'm.measured.yaml').write_text(yaml.safe_dump(
-        {'points': {'J': {'x': 0.01, 'y': 1.02, 'source': 'measured', 'stamp': '2026-10-07T10:00:00'}}}))
-    (tmp_path / 'c.yaml').write_text(yaml.safe_dump(data, allow_unicode=True))
-    c = Course.load(str(tmp_path / 'c.yaml'))
-    assert (c.points['J'].x, c.points['J'].y, c.points['J'].source) == (0.01, 1.02, 'measured')
-    assert 'J' not in c.estimate_points()
-    (tmp_path / 'm.measured.yaml').write_text(yaml.safe_dump({'points': {'NOPE': {'x': 0, 'y': 0}}}))
-    with pytest.raises(CourseError, match='NOPE'):
-        Course.load(str(tmp_path / 'c.yaml'))
+TAPE = {                                       # 시험용 줄자 파일: 벽 x=-1.2(왼쪽), y=1.2(위). J 를 줄자로 잰다
+    'walls': {'left': {'value': -1.2, 'probe': {'x': 0, 'y': 0.5, 'dir': 'left'}},
+              'top': {'value': 1.2, 'probe': {'x': 0, 'y': 0.5, 'dir': 'up'}}},
+    'roads': {'tail_top': [{'num': 1, 'wall': 'top', 'a': 12.0, 'b': 26.0}]},        # 가운데 y = 1.2 - 0.19 = 1.01
+    'marks': {'jx': {'num': 2, 'wall': 'left', 'dist': 115.0, 'length': 10.0}},     # 가운데 x = -1.2 + 1.2 = 0.0
+    'params': {'lane_width': 0.16},
+    'points': {'J': {'x': 'jx', 'y': 'tail_top'}, 'TA': {'x': -1.0, 'y': 'tail_top'},
+               'R1': {'x': -0.7, 'y': 'tail_top'}},
+}
 
 
-def test_missing_measured_file_is_fine(tmp_path):
+def write_course(tmp_path, tape=None, robot=None, **extra):
     data = copy.deepcopy(BASE)
-    data['measured'] = 'not_recorded_yet.yaml'
+    data['points']['R1'] = {'x': -0.7, 'y': 1.0, 'yaw': WEST}
+    data.update(tape='c.tape.yaml', robot='c.robot.yaml', **extra)
+    if tape is not None:
+        (tmp_path / 'c.tape.yaml').write_text(yaml.safe_dump(tape, allow_unicode=True))
+    if robot is not None:
+        (tmp_path / 'c.robot.yaml').write_text(yaml.safe_dump(robot, allow_unicode=True))
     (tmp_path / 'c.yaml').write_text(yaml.safe_dump(data, allow_unicode=True))
-    assert Course.load(str(tmp_path / 'c.yaml')).points['J'].source == 'estimate'
+    return str(tmp_path / 'c.yaml')
+
+
+def test_tape_file_overrides_estimates(tmp_path):
+    c = Course.load(write_course(tmp_path, tape=TAPE))
+    j, ta, r1 = c.points['J'], c.points['TA'], c.points['R1']
+    assert (j.x, j.y, j.source) == (pytest.approx(0.0), pytest.approx(1.01), 'tape')
+    assert (ta.x, ta.y, ta.source) == (-1.0, pytest.approx(1.01), 'estimate')    # 숫자(추정)가 섞이면 estimate
+    assert r1.yaw == WEST                                     # 줄자는 방향을 재지 않음: 코스 설정의 방향 유지
+    assert (c.params['lane_width'], c.param_sources['lane_width']) == (0.16, 'tape')
+    assert c.source_summary()['tape'] == ['J'] and 'TA' in c.source_summary()['estimate']
+
+
+def test_robot_file_overrides_tape(tmp_path):
+    robot = {'points': {'J': {'x': 0.01, 'y': 1.02, 'stamp': '2026-10-07T10:00:00'}}, 'params': {'lane_width': 0.17}}
+    c = Course.load(write_course(tmp_path, tape=TAPE, robot=robot))
+    j = c.points['J']
+    assert (j.x, j.y, j.source, j.stamp) == (0.01, 1.02, 'robot', '2026-10-07T10:00:00')
+    assert c.points['R1'].source == 'estimate'                # R1 은 줄자 파일에서 x 가 숫자(추정)
+    assert (c.params['lane_width'], c.param_sources['lane_width']) == (0.17, 'robot')
+    assert list(c.source_summary()) == ['robot', 'tape', 'estimate']          # 우선순위 높은 것부터
+
+
+def test_missing_tape_and_robot_files_are_fine(tmp_path):
+    c = Course.load(write_course(tmp_path))
+    assert c.points['J'].source == 'estimate' and c.param_sources['lane_width'] == 'estimate'
+
+
+@pytest.mark.parametrize('tape, robot, message', [
+    (dict(TAPE, points={'NOPE': {'x': 0.0, 'y': 'tail_top'}}), None, '줄자 파일.*NOPE'),
+    (None, {'points': {'NOPE': {'x': 0, 'y': 0}}}, '로봇 기록 파일.*NOPE'),
+    (dict(TAPE, points={'J': {'x': 'tail_top', 'y': 1.0}}), None, 'y 좌표라 x 에'),
+    (None, {'params': {'speed': 1.0}}, 'params.speed'),
+])
+def test_override_file_errors(tmp_path, tape, robot, message):
+    with pytest.raises(CourseError, match=message):
+        Course.load(write_course(tmp_path, tape=tape, robot=robot))
+
+
+def test_course_file_points_must_be_estimates():
+    with pytest.raises(CourseError, match='추정값'):
+        make(points__J={'x': 0.0, 'y': 1.0, 'source': 'tape'})
 
 
 @pytest.mark.parametrize('changes, message', [
@@ -249,3 +292,19 @@ def test_real_course_file_loads_and_plans():
     assert [(m.node_id, m.turn) for m in route1.maneuvers] == [('J', 'STRAIGHT')]
     route2 = c.plan(start2, c.location_at('tail', 0.55 * c.edges['tail'].length), allow_uturn=True)
     assert [(m.node_id, m.turn) for m in route2.maneuvers] == [('J', 'LEFT')]
+
+
+def test_real_course_uses_tape_measurements():
+    c = Course.load(REAL_COURSE)
+    src = c.source_summary()
+    assert set(src['tape']) == {'J', 'T_END', 'NE', 'SE', 'SW', 'C1', 'C2'}
+    assert {'T_A', 'T_B', 'T_C', 'T_D', 'W_LOOP', 'W_TAIL', 'R1', 'R2'} <= set(src['estimate'])
+    assert (c.params['lane_width'], c.param_sources['lane_width']) == (0.166, 'tape')
+    # 설계값 규칙: 출발점은 목표로 써도 옮겨지지 않고(구역 밖), 대기 지점은 갈림길·횡단보도 구역 밖
+    for name in ('R1', 'R2'):
+        p = c.points[name]
+        goal, note = c.snap_goal(p.x, p.y)
+        assert goal is not None and note == '' and goal.dist < 0.005, (name, note)
+    for name, loc in c.waits.items():
+        for x, y, r in c.crosswalks.values():
+            assert math.hypot(loc.x - x, loc.y - y) > r + 0.06, name
