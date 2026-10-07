@@ -11,8 +11,9 @@ DS = 0.02
 
 
 class SimRobot:
-    def __init__(self, rid, start, goal, speed=0.2, delay=0.0):
+    def __init__(self, rid, start, goal, speed=0.2, delay=0.0, fixed=False):
         self.id, self.pos, self.goal = rid, np.array(start, float), np.array(goal, float)
+        self.fixed = fixed            # 관제 명령을 따르지 않는 로봇 (차선 주행 흉내): 앞에 다른 로봇이 바짝 있을 때만 선다
         self.speed, self.delay = speed, delay
         self.path = None
         self.i = 0.0
@@ -25,6 +26,19 @@ class SimRobot:
         self.yaw = 0.0
         self.back_left = 0.0                      # BACKUP_STRAIGHT: 남은 후진 거리
         self.finished = False         # 목표에 도착한 적 있음 (비켜섰다가 목표로 되돌아가지 않는다)
+
+
+def _front_blocked(r, robots, ahead=0.30, half=0.16):
+    """r 의 앞(진행 방향) ahead m, 좌우 half m 안에 다른 로봇 중심이 있는가"""
+    c, s = math.cos(r.yaw), math.sin(r.yaw)
+    for o in robots:
+        if o is r:
+            continue
+        dx, dy = o.pos[0] - r.pos[0], o.pos[1] - r.pos[1]
+        fx, fy = dx * c + dy * s, -dx * s + dy * c
+        if 0.0 < fx <= ahead and abs(fy) <= half:
+            return True
+    return False
 
 
 def run(gm, tm, specs, T=200.0, dt=0.1, tick=0.5, use_traffic=True, log=None, pos_noise=0.0, seed=0):
@@ -56,10 +70,12 @@ def run(gm, tm, specs, T=200.0, dt=0.1, tick=0.5, use_traffic=True, log=None, po
                         plan = r.path[int(r.i):] + sh
                         parked = False
                     tr = np.array(r.trail[-int(2.5 / DS):]) + sh if len(r.trail) > 1 else None
-                    agents.append(Agent(r.id, r.pos + sh, plan, DS, 0.2, parked, r.mode in ('YIELD', 'BACKUP', 'BSTRAIGHT'), trail=tr, backing=r.mode in ('BACKUP', 'BSTRAIGHT'), yaw=r.yaw))
+                    agents.append(Agent(r.id, r.pos + sh, plan, DS, 0.2, parked, r.mode in ('YIELD', 'BACKUP', 'BSTRAIGHT'), trail=tr, backing=r.mode in ('BACKUP', 'BSTRAIGHT'), yaw=r.yaw, fixed=r.fixed))
                 cmds = tm.decide(agents, t) if getattr(tm, 'wants_time', False) else tm.decide(agents)
                 for r in robots:
                     c = cmds[r.id]
+                    if r.fixed:                                 # 관제 명령을 따르지 않는다
+                        continue
                     if r.mode in ('BACKUP', 'BSTRAIGHT'):      # 후진은 끝날 때까지 계속
                         continue
                     if c.kind == 'BACKUP_STRAIGHT':
@@ -118,6 +134,8 @@ def run(gm, tm, specs, T=200.0, dt=0.1, tick=0.5, use_traffic=True, log=None, po
             lim = len(r.path) - 1
             if r.mode == 'FOLLOW' and r.hold is not None:
                 lim = min(lim, r.hold)
+            if r.fixed and _front_blocked(r, robots):      # 차선 로봇의 앞 사물 정지 흉내 (초음파·라이다 앞 통로)
+                lim = int(r.i)
             step = (r.speed * 0.5 if r.mode == 'BACKUP' else r.speed) * dt / DS     # 후진은 천천히
             if r.i + 1e-9 < lim:
                 r.i = min(lim, r.i + step)

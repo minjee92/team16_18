@@ -44,6 +44,7 @@ class Agent:
     trail: np.ndarray = None          # 지나온 위치 (오래된 것 → 최근, ds 간격). 후진으로 길을 터 줄 때 되돌아갈 길
     backing: bool = False             # 후진으로 길을 터 주는 중
     yaw: float = None                 # 로봇이 보는 방향 (똑바로 후진할 때 뒤쪽 공간 계산용)
+    fixed: bool = False               # 관제가 움직일 수 없는 로봇 (차선 주행): 명령을 따르지 않고, 마주치면 항상 우선 (encounter 방식만)
 
 
 @dataclass

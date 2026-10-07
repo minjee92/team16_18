@@ -74,6 +74,8 @@ class TState:
         self.tp = None              # navigate_through_poses 클라이언트 (고정 경로를 경유점으로 보낸다)
         self.note_last = (None, 0.0)
         self.lane = None            # Lane Following 미션 노드의 마지막 상태 (dict) 와 받은 시각
+        self.lane_cmd = None        # 마지막 lane_cmd (관제 lane_route 의 route/route_back 이 있으면 고정 로봇 경로로 쓴다)
+        self.lane_plan = None       # (키, 경로 점 ds 간격) 캐시
         self.esc_pub = None         # /<ns>/escape_cmd: 벽에서 빠져나오기 요청 (로봇의 fms_escape)
         self.esc_id = 0
         self.esc_tries = 0          # 이번 미션에서 빠져나오기를 요청한 횟수 (최대 ESCAPE_MAX)
@@ -120,6 +122,9 @@ class FleetTraffic(FleetCoordinator):
         self.declare_parameter('arrive_tol', 0.25)        # Nav2 가 SUCCEEDED 라 해도 실제 위치가 목표에서 이보다 멀면 FAILED 로 보고
         self.declare_parameter('mission_timeout', 180.0)   # 재시도를 포함해 이 시간(s) 안에 못 끝내면 FAILED
         self.declare_parameter('min_resend_sec', 3.0)     # 대기·비켜서기 목표를 바꾸는 최소 간격 (자주 바꾸면 Nav2 가 매번 방향을 다시 잡는다)
+        # Nav2 로봇과 차선 로봇이 섞일 때 (2026-10-08): true 면 차선 미션 중인 로봇을 '고정 로봇'(명령 안 받음, 항상 우선)으로
+        # 마주침 판단(encounter 방식)에 넣어 Nav2 로봇이 비키게 한다. false(기본)면 예전처럼 차선 로봇을 빼고 본다
+        self.declare_parameter('lane_robots_as_fixed', False)
         mp = self.get_parameter('map_yaml').value
         self.tm = None
         self.em = None
@@ -143,6 +148,7 @@ class FleetTraffic(FleetCoordinator):
             self.arrive_tol = float(self.get_parameter('arrive_tol').value)
             self.mission_timeout = float(self.get_parameter('mission_timeout').value)
             self.min_resend = float(self.get_parameter('min_resend_sec').value)
+            self.lane_fixed = bool(self.get_parameter('lane_robots_as_fixed').value)
             tick = float(self.get_parameter('tick_sec').value) or 0.1
             self.create_timer(tick, self.traffic_tick)
             self.get_logger().info(f'충돌 방지 준비: 방식={self.mode}, 판단 주기 {tick:.1f}s, map={mp}')
@@ -252,6 +258,7 @@ class FleetTraffic(FleetCoordinator):
             t.mn = self.create_client(ManageLifecycleNodes, f'/{r.ns}/lifecycle_manager_navigation/manage_nodes')
             self.create_subscription(Odometry, f'/{r.ns}/odom', lambda m, t=t: self._on_odom_motion(t, m), 10)
             self.create_subscription(String, f'/{r.ns}/lane_status', lambda m, t=t: self._on_lane_status(t, m), 10)
+            self.create_subscription(String, f'/{r.ns}/lane_cmd', lambda m, t=t: self._on_lane_cmd(t, m), 10)
             t.esc_pub = self.create_publisher(String, f'/{r.ns}/escape_cmd', 10)
             t.amcl_client = self.create_client(GetState, f'/{r.ns}/amcl/get_state')
             self.create_subscription(PoseWithCovarianceStamped, f'/{r.ns}/amcl_pose',
@@ -330,6 +337,39 @@ class FleetTraffic(FleetCoordinator):
             st.lane, st.lane_t = json.loads(m.data), time.monotonic()
         except ValueError:
             pass
+
+    @staticmethod
+    def _on_lane_cmd(st, m):
+        try:
+            d = json.loads(m.data)
+        except ValueError:
+            return
+        if isinstance(d, dict) and d.get('cmd') in ('go', 'home', 'cancel'):
+            st.lane_cmd = d if d['cmd'] != 'cancel' else None
+
+    def _lane_plan(self, r, st):
+        """차선 미션 중인 로봇의 남은 경로 (ds 간격). 관제 경로(route/route_back)가 있으면 그것, 없으면 지도 A* 로 목표까지."""
+        lane, cmd = st.lane or {}, st.lane_cmd or {}
+        leg = lane.get('leg', 'outbound')
+        route = cmd.get('route' if leg == 'outbound' else 'route_back')
+        key = (cmd.get('id'), leg, None if route else tuple(lane.get('goal') or ()) if leg == 'outbound' else tuple(lane.get('start') or ()))
+        if st.lane_plan is None or st.lane_plan[0] != key:
+            pts = None
+            try:
+                if route and len(route.get('points', [])) >= 2:
+                    pts = resample(np.asarray(route['points'], float), DS)
+                else:
+                    target = lane.get('goal') if leg == 'outbound' else lane.get('start')
+                    if target:
+                        pts = astar(self.gm, np.array(r.pose[:2]), np.asarray(target[:2], float))
+            except (ValueError, TypeError):
+                pts = None
+            st.lane_plan = (key, pts)
+        pts = st.lane_plan[1]
+        if pts is None or len(pts) < 2:
+            return None
+        i = int(np.argmin(np.hypot(pts[:, 0] - r.pose[0], pts[:, 1] - r.pose[1])))
+        return np.vstack([np.array(r.pose[:2]), pts[i + 1:]]) if i + 1 < len(pts) else None
 
     def lane_active(self, r):
         """Lane Following 미션 중인가 (Nav2 가 아니라 차선 추종 노드가 움직이는 로봇)"""
@@ -718,8 +758,16 @@ class FleetTraffic(FleetCoordinator):
                 st.block_until = time.monotonic() + 5.0
         agents, byid = [], {}
         for r in self.robots.values():
-            if self.robot_state(r) == 'OFFLINE' or not r.localized or self.lane_active(r):
-                continue                # 차선 추종 중인 로봇은 관제가 움직일 수 없다 (상대 로봇의 Nav2 가 장애물로 피한다)
+            if self.robot_state(r) == 'OFFLINE' or not r.localized:
+                continue
+            if self.lane_active(r):     # 차선 추종 중인 로봇은 관제가 움직일 수 없다
+                if self.lane_fixed and self.em is not None:   # 고정 로봇으로 넣어 Nav2 로봇이 비키게 (lane_robots_as_fixed)
+                    plan = self._lane_plan(r, self.st(r))
+                    if plan is not None:
+                        a = Agent(r.id, np.array(r.pose[:2]), plan, DS, 0.2, yaw=float(r.pose[2]), fixed=True)
+                        agents.append(a)
+                        byid[r.id] = (r, self.st(r), a)
+                continue                # (끄면 예전처럼 상대 로봇의 Nav2 가 장애물로 피하길 기대)
             st = self.st(r)
             active = r.task is not None
             if active and (st.plan is None or time.monotonic() - st.plan_t > 1.0):
@@ -746,12 +794,14 @@ class FleetTraffic(FleetCoordinator):
             cmds = self.tm.decide(agents)
         for rid, c in cmds.items():
             r, st, a = byid[rid]
+            if a.fixed:                 # 고정 로봇(차선 주행)에는 명령을 보내지 않는다
+                continue
             if not st.nav_ready:
                 if r.task is not None:
                     self.emit(r.task, r.id, 'RUNNING', msg='Nav2 활성화 대기 중')
                 continue
             self._apply(r, st, a, c)
-        self._update_lcd(cmds, byid)
+        self._update_lcd(cmds, {k: v for k, v in byid.items() if not v[2].fixed})   # 차선 로봇 LCD 는 차선 노드가 쓴다
 
     def _apply(self, r, st, a, c):
         if st.mode in ('BACKUP', 'ESCAPE'):              # 후진·빠져나오기가 끝날 때까지 다른 명령은 받지 않는다

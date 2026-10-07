@@ -7,7 +7,9 @@
   <arg name="conf_radius_parked" default="0.30"/>
   <arg name="yield_sep" default="0.45"/>   <!-- 0.34(=conf_radius) 에서 상향: 실물에서 비켜선 자리 8 cm 옆을 지나감. 되돌리려면 yield_sep:=0.34 -->
   <arg name="arrive_tol" default="0.25"/>
-  <arg name="traffic_mode" default="encounter"/>   <!-- encounter: 마주쳤을 때만 처리 / predict: 이전 방식(미리 예측해서 피함) -->
+  <arg name="traffic_mode" default="encounter"/>
+  <!-- Nav2 로봇과 차선 로봇이 섞일 때: true 면 차선 미션 중인 로봇을 고정 우선권 로봇으로 보고 Nav2 로봇이 비킨다 (encounter 방식만) -->
+  <arg name="lane_robots_as_fixed" default="false"/>   <!-- encounter: 마주쳤을 때만 처리 / predict: 이전 방식(미리 예측해서 피함) -->
   <!-- 차선 주행(Lane Following) 로봇끼리 마주침 조정 (lane_traffic). 둘 중 하나라도 비우면 조정 꺼짐(상태만 발행) -->
   <arg name="lanes_yaml" default=""/>   <!-- 차선만 빈 지도 (mission4_3_lanes_1cm) -->
   <arg name="floor_yaml" default=""/>   <!-- 차선 지운 지도 (mission4_3_nolanes_1cm) -->
@@ -20,6 +22,7 @@
     <param name="yield_sep" value="$(var yield_sep)"/>
     <param name="arrive_tol" value="$(var arrive_tol)"/>
     <param name="traffic_mode" value="$(var traffic_mode)"/>
+    <param name="lane_robots_as_fixed" value="$(var lane_robots_as_fixed)"/>
   </node>
   <node pkg="pinky_fms_traffic" exec="lane_traffic" output="screen">
     <param name="lanes_yaml" value="$(var lanes_yaml)"/>

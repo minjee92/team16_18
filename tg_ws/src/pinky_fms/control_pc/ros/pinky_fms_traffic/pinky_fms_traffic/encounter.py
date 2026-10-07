@@ -12,6 +12,10 @@
                (우선권 로봇이 이미 지나온 길은 점유로 보지 않는다)
   6) 해제: 우선권 로봇의 남은 경로가 양보 로봇의 위치·경로에서 R_CONF 이상 멀어지면 끝. 이후 둘 다 평소대로 주행
 
+  고정 로봇(Agent.fixed, 차선 주행 로봇): 관제 명령을 따르지 않으므로 마주치면 항상 우선권 로봇이고, 상대(Nav2 로봇)가 비킨다.
+  상대가 비킬 곳이 없어도 역할을 바꾸지 않는다 (STUCK: 상대는 정지, 고정 로봇은 자기 앞 사물 감지로 선다).
+  고정 로봇끼리는 여기서 보지 않는다 (차선 로봇끼리는 lane_traffic 이 조정).
+
 decide(agents, now) -> {로봇: Command}  (traffic.TrafficManager.decide 와 같은 모양이라 시뮬레이터·ROS 노드에 그대로 꽂힌다)
   GO            : 평소대로 (path 가 있으면 그 경로를 고정해서 따라간다. hold_index = 경로 번호, 바뀔 때만 다시 보낸다)
   HOLD          : 제자리 정지
@@ -129,7 +133,7 @@ class EncounterManager:
                 d = float(np.hypot(*(a.pos - b.pos)))
                 prev = self.prev_d.get(key)
                 self.prev_d[key] = d
-                if a.id in busy or b.id in busy or key in self.enc or (a.parked and b.parked):
+                if a.id in busy or b.id in busy or key in self.enc or (a.parked and b.parked) or (a.fixed and b.fixed):
                     continue
                 approaching = prev is None or d < prev - 0.002     # 처음 보는 쌍(이미 붙어 있음)은 가까워지는 중으로 본다
                 if d > self.d_meet or not (approaching or d < 0.35) or not self._los(a.pos, b.pos):
@@ -210,7 +214,9 @@ class EncounterManager:
 
     def _resolve(self, e, a, b, agents):
         """우선권을 정하고 우선권 로봇 경로를 고정, 양보 로봇의 비켜설 길을 정한다"""
-        if a.parked != b.parked:
+        if a.fixed != b.fixed:                        # 관제가 움직일 수 없는 로봇(차선 주행)이 항상 우선
+            winner, loser = (a, b) if a.fixed else (b, a)
+        elif a.parked != b.parked:
             loser = a if a.parked else b
             winner = b if a.parked else a
         else:
@@ -235,7 +241,7 @@ class EncounterManager:
             self._event(loser.id, f'{winner.id} 에게 양보: ' + ('비켜설 자리' if esc[0] == 'ESCAPE' else '뒤로 물러날 자리')
                         + f' ({esc[1][-1][0]:.2f}, {esc[1][-1][1]:.2f}) 로 이동 ({_length(esc[1]):.2f} m)')
             return
-        if not e.swapped:                             # 양보할 곳이 없으면 역할을 바꿔 본다
+        if not e.swapped and not winner.fixed:        # 양보할 곳이 없으면 역할을 바꿔 본다 (고정 로봇은 양보할 수 없다)
             e.swapped = True
             esc2 = self._escape(winner, loser, agents)
             if esc2 is not None:
