@@ -230,6 +230,10 @@ __marimo__/
 runs/
 weights/
 
+# tg_ws colcon 산출물 (build/ 는 위에서 이미 제외)
+/tg_ws/install/
+/tg_ws/log/
+
 # 임시 산출물
 _verify/
 __pycache__/
