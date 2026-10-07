@@ -21,7 +21,9 @@ lane_route: true
 defaults:
   user: pinky                   # SSH 사용자 (GUI 에서 로봇마다 바꿀 수 있음)
   mode: ssh                     # ssh: 실제 로봇에 SSH 로 접속 / local: 이 PC 에서 가짜 로봇 실행(테스트)
-  ws_setup: source /opt/ros/jazzy/setup.bash && source ~/pinky_pro/install/setup.bash   # 로봇의 colcon 워크스페이스
+  # 로봇의 colcon 워크스페이스. ~/pinky_pro 위에, 있으면 ~/team16_18/tg_ws 를 겹쳐 쓴다 (그곳에 빌드한 pinky_fms_bringup·
+  # pinky_fms_lane_robot 이 ~/pinky_pro 의 같은 패키지를 덮어씀. 없으면 예전과 같다. 빌드 방법: pinky_fms_lane/README.md)
+  ws_setup: source /opt/ros/jazzy/setup.bash && source ~/pinky_pro/install/setup.bash && { [ -f ~/team16_18/tg_ws/install/setup.bash ] && source ~/team16_18/tg_ws/install/setup.bash || true; }
   launch_cmd: ros2 launch pinky_fms_bringup robot_bringup.launch.xml namespace:={namespace}
   # 주행 스택: 미션 종류에 따라 bringup 위에 하나만 띄운다 (둘 다 cmd_vel 을 쓰므로 동시에 띄우지 않는다).
   # GUI 에서 미션을 실행하면 백엔드가 SSH 로 켜고 끈다. {namespace} = 로봇 ID, {map} = robot_map, {lane_map} = lane_map
