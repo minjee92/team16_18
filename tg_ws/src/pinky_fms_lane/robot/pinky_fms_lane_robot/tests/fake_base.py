@@ -2,6 +2,7 @@
 """시험용 가짜 로봇 (위치 추정 launch 를 실물 없이 시험할 때만 쓴다. 설치하지 않는다).
 
   /<ns>/tf   : odom → base_footprint (제자리, 20 Hz)
+  /<ns>/odom : 속도 0 (제자리, 20 Hz). 좌표 기록 도구의 '멈춤 확인'용
   /<ns>/scan : 지도를 광선 추적해 만든 가짜 라이다. 참 위치에서 본 360 빔, 10 Hz, frame = base_footprint
 AMCL 은 참 위치를 모른다. 초기 위치를 받고 이 스캔을 지도와 맞춰서 참 위치를 찾아야 한다.
 로봇이 odom 원점에 서 있으므로, AMCL 이 맞게 찾으면 map→odom 이 곧 참 위치가 된다.
@@ -16,6 +17,7 @@ import numpy as np
 import rclpy
 import yaml
 from geometry_msgs.msg import TransformStamped
+from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from tf2_msgs.msg import TFMessage
@@ -58,6 +60,7 @@ class FakeBase(Node):
         self.odom, self.base = args.frame_prefix + 'odom', args.frame_prefix + 'base_footprint'
         self.tf_pub = self.create_publisher(TFMessage, 'tf', 100)
         self.scan_pub = self.create_publisher(LaserScan, 'scan', 10)
+        self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
         self.create_timer(0.05, self.publish_tf)
         self.create_timer(0.1, self.publish_scan)
         hits = sum(math.isfinite(v) for v in self.ranges)
@@ -70,6 +73,10 @@ class FakeBase(Node):
         t.header.frame_id, t.child_frame_id = self.odom, self.base
         t.transform.rotation.w = 1.0
         self.tf_pub.publish(TFMessage(transforms=[t]))
+        o = Odometry()
+        o.header.stamp, o.header.frame_id, o.child_frame_id = t.header.stamp, self.odom, self.base
+        o.pose.pose.orientation.w = 1.0
+        self.odom_pub.publish(o)
 
     def publish_scan(self):
         s = LaserScan()

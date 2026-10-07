@@ -18,7 +18,7 @@ setup(
     maintainer='minjee92',
     maintainer_email='minjee92@users.noreply.github.com',
     description='FMS lane driving (control PC): course model, route planning, course check, tape measurements, '
-                'GUI lane map and initial pose tools',
+                'GUI lane map, initial pose and course point recorder tools',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
@@ -27,6 +27,7 @@ setup(
             'send_initial_pose = pinky_fms_lane.initial_pose:main',
             'course_tape = pinky_fms_lane.tape:main',
             'make_lane_map = pinky_fms_lane.lane_map:main',
+            'record_course_points = pinky_fms_lane.record_points:main',
         ],
     },
 )

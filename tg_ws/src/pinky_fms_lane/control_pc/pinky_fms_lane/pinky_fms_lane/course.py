@@ -243,6 +243,10 @@ class Course:
                 problems.append(f'횡단보도 {name}: point 가 points 에 없음')
             else:
                 self.crosswalks[name] = (p.x, p.y, float((v or {}).get('radius', 0.1)))
+        self.record_order = list(data.get('record_order') or [])     # 로봇 기록 도구가 안내할 순서
+        missing = [n for n in self.record_order if n not in self.points]
+        if missing:
+            problems.append(f'record_order: points 에 없는 이름 {missing}')
         if problems:
             raise CourseError(problems)
 
