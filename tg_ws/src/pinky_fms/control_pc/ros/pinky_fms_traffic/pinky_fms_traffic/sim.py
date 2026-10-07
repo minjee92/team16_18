@@ -57,7 +57,7 @@ def run(gm, tm, specs, T=200.0, dt=0.1, tick=0.5, use_traffic=True, log=None, po
                         parked = False
                     tr = np.array(r.trail[-int(2.5 / DS):]) + sh if len(r.trail) > 1 else None
                     agents.append(Agent(r.id, r.pos + sh, plan, DS, 0.2, parked, r.mode in ('YIELD', 'BACKUP', 'BSTRAIGHT'), trail=tr, backing=r.mode in ('BACKUP', 'BSTRAIGHT'), yaw=r.yaw))
-                cmds = tm.decide([a for a in agents if not (a.yielding and False)])
+                cmds = tm.decide(agents, t) if getattr(tm, 'wants_time', False) else tm.decide(agents)
                 for r in robots:
                     c = cmds[r.id]
                     if r.mode in ('BACKUP', 'BSTRAIGHT'):      # 후진은 끝날 때까지 계속
@@ -78,7 +78,7 @@ def run(gm, tm, specs, T=200.0, dt=0.1, tick=0.5, use_traffic=True, log=None, po
                         continue
                     if r.mode == 'YIELD':
                         r.hold = None
-                        if c.kind == 'YIELD':                  # 길을 다시 계산했다
+                        if c.kind == 'YIELD' and np.hypot(*(c.path[-1] - r.path[-1])) > 0.05:    # 비켜설 자리가 바뀌었다 (같으면 가던 길 유지)
                             r.path, r.i = c.path, 0.0
                         elif c.kind == 'HOLD':                 # 비켜설 곳이 없어졌다: 멈춘다
                             r.path, r.i = r.pos[None, :].copy(), 0.0
@@ -87,6 +87,8 @@ def run(gm, tm, specs, T=200.0, dt=0.1, tick=0.5, use_traffic=True, log=None, po
                         if r.mode == 'WAIT':
                             r.mode = 'FOLLOW'
                         r.hold = None
+                        if c.path is not None and len(c.path) > 1 and getattr(r, 'route_id', None) != c.hold_index:
+                            r.path, r.i, r.route_id = c.path.copy(), 0.0, c.hold_index      # 정해 준 경로로 (마주침: 고정 경로 / 새 길)
                     elif c.kind == 'HOLD':
                         if r.mode == 'WAIT':
                             r.hold = 0

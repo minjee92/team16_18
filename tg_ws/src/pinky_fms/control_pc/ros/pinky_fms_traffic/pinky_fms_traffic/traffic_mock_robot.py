@@ -10,7 +10,7 @@ import time
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
-from nav2_msgs.action import BackUp, ComputePathToPose, NavigateToPose
+from nav2_msgs.action import BackUp, ComputePathToPose, NavigateToPose, NavigateThroughPoses
 from nav_msgs.msg import Odometry, Path
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -60,6 +60,8 @@ class TrafficMockRobot(Node):
                                 goal_callback=self.on_goal, cancel_callback=lambda g: CancelResponse.ACCEPT, callback_group=cb)
         self.cp = ActionServer(self, ComputePathToPose, f'/{ns}/compute_path_to_pose', self.compute,
                                goal_callback=lambda g: GoalResponse.ACCEPT, cancel_callback=lambda g: CancelResponse.ACCEPT, callback_group=cb)
+        self.tp = ActionServer(self, NavigateThroughPoses, f'/{ns}/navigate_through_poses', self.execute_through,
+                               goal_callback=self.on_goal, cancel_callback=lambda g: CancelResponse.ACCEPT, callback_group=cb)
         self.bu = ActionServer(self, BackUp, f'/{ns}/backup', self.backup,
                                goal_callback=self.on_goal, cancel_callback=lambda g: CancelResponse.ACCEPT, callback_group=cb)
         self.get_logger().info(f'traffic mock robot /{ns} ready')
@@ -76,6 +78,11 @@ class TrafficMockRobot(Node):
         o = Odometry()
         o.header.stamp, o.header.frame_id, o.child_frame_id = now, 'odom', 'base_footprint'
         o.pose.pose.position.x, o.pose.pose.position.y = self.x, self.y
+        t = time.monotonic()      # 실물처럼 속도도 채운다 (fleet_traffic 이 서 있는지 판단할 때 쓴다)
+        prev = getattr(self, '_odom_prev', None)
+        if prev is not None and t > prev[2]:
+            o.twist.twist.linear.x = math.hypot(self.x - prev[0], self.y - prev[1]) / (t - prev[2])
+        self._odom_prev = (self.x, self.y, t)
         self.odom_pub.publish(o)
         if self.localized:
             a = PoseWithCovarianceStamped()
@@ -123,6 +130,19 @@ class TrafficMockRobot(Node):
         gh.succeed()
         return res
 
+    def execute_through(self, gh):
+        """경유점을 차례로 지나 마지막 점까지 (실제 Nav2 처럼 경유점 사이는 각각 계획)"""
+        mine, pts, cur = self.cur, [], (self.x, self.y)
+        for ps in gh.request.poses:
+            g = (ps.pose.position.x, ps.pose.position.y)
+            seg = astar(self.gm, cur, g)
+            if seg is None:
+                gh.abort()
+                return NavigateThroughPoses.Result()
+            pts.append(seg if not pts else seg[1:])
+            cur = g
+        return self._drive(gh, mine, np.vstack(pts), NavigateThroughPoses)
+
     def execute(self, gh):
         mine = self.cur
         g = gh.request.pose.pose
@@ -131,16 +151,19 @@ class TrafficMockRobot(Node):
         if pts is None:
             gh.abort()
             return NavigateToPose.Result()
+        return self._drive(gh, mine, pts, NavigateToPose)
+
+    def _drive(self, gh, mine, pts, Action):
         seg = np.hypot(*np.diff(pts, axis=0).T) if len(pts) > 1 else np.array([0.0])
         total = float(seg.sum())
-        i, fb, dt = 0.0, NavigateToPose.Feedback(), 0.1
+        i, fb, dt = 0.0, Action.Feedback(), 0.1
         while True:
             if gh.is_cancel_requested:
                 gh.canceled()
-                return NavigateToPose.Result()
+                return Action.Result()
             if self.cur != mine:              # 새 목표가 왔다
                 gh.abort()
-                return NavigateToPose.Result()
+                return Action.Result()
             if i >= len(pts) - 1 - 1e-9:
                 break
             i = min(len(pts) - 1, i + self.speed * dt / 0.02)
@@ -151,7 +174,7 @@ class TrafficMockRobot(Node):
             gh.publish_feedback(fb)
             time.sleep(dt)
         gh.succeed()
-        return NavigateToPose.Result()
+        return Action.Result()
 
 
 def main():

@@ -9,6 +9,7 @@
 -->
 <launch>
     <arg name="namespace" default="amr_01"/>
+    <arg name="lcd" default="true"/>   <!-- 관제(fleet_traffic)의 주행 상태를 LCD 에 표시. emotion 서버 등 LCD 를 쓰는 다른 노드와 같이 쓰지 않는다 -->
 
     <group>
         <push-ros-namespace namespace="$(var namespace)"/>
@@ -19,4 +20,6 @@
 
         <include file="$(find-pkg-share pinky_bringup)/launch/bringup_robot.launch.xml"/>
     </group>
+
+    <node pkg="pinky_fms_bringup" exec="fms_lcd_status.py" name="fms_lcd_status" namespace="$(var namespace)" output="screen" if="$(var lcd)"/>
 </launch>

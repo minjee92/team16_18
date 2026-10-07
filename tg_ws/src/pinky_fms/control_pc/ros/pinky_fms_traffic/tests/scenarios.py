@@ -18,13 +18,17 @@ NOISE = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
 gm = GridMap(MAP)
 import pinky_fms_traffic.traffic as _T
 _T.YIELD_HORIZON = float(os.environ.get('HORIZON', _T.YIELD_HORIZON))
-tm = TrafficManager(gm, r_conf=R_CONF, r_conf_parked=float(os.environ.get('PARKED', 0.26)))
+tm = TrafficManager(gm, r_conf=R_CONF, r_conf_parked=float(os.environ.get('PARKED', 0.26)),
+                    yield_sep=float(os.environ['YIELD_SEP']) if os.environ.get('YIELD_SEP') else None)
+if os.environ.get('MODE') == 'encounter':          # 마주침 방식 (MODE=encounter python3 tests/scenarios.py ...)
+    from pinky_fms_traffic.encounter import EncounterManager
+    tm = EncounterManager(gm)
 E, W = (1.97, 0.13), (0.20, 0.15)
 
 
 def show(name, **kw):
     msgs = []
-    r_on = run(gm, tm, kw['specs'](), log=lambda t, i, m: msgs.append(f'  t={t:5.1f} {i}: {m}'), use_traffic=True)
+    r_on = run(gm, tm, kw['specs'](), log=lambda t, i, m: msgs.append(f'  t={t:5.1f} {i}: {m}'), use_traffic=True, tick=float(os.environ.get('TICK', 0.5)))
     r_off = run(gm, tm, kw['specs'](), use_traffic=False)
     print(f'\n[{name}]\n  끄면 : {r_off}\n  켜면 : {r_on}')
     for m in msgs[:6]:
@@ -68,7 +72,7 @@ for k in range(N):
             break
     mk = lambda: [SimRobot(f'amr_0{j + 1}', starts[j], goals[j], speed=rng.uniform(0.15, 0.2), delay=(rng.uniform(0, 5) if j else 0.0)) for j in range(NR)]
     st = rng.getstate()
-    on = run(gm, tm, mk(), T=400, pos_noise=NOISE, seed=k)
+    on = run(gm, tm, mk(), T=400, pos_noise=NOISE, seed=k, tick=float(os.environ.get('TICK', 0.5)))
     rng.setstate(st)
     off = run(gm, tm, mk(), T=400, use_traffic=False, pos_noise=NOISE, seed=k)
     if 'error' in on:
