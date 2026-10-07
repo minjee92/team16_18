@@ -7,6 +7,9 @@ lane_status / lane_traffic_cmd 인터페이스(2026-10-07 pinky-96 구현)를 �
     (traffic_cmd_timeout > 0 이면 그 시간 무명령일 때 resume 으로 간주. 로봇 fms_lane_mission 과 같은 기본 0 = 끔)
   - 비켜서기·복귀: 방향 오차 0.25 rad 초과면 제자리 회전, 아니면 직진 0.06 m/s, 0.03 m 안이면 도착, 복귀는 yaw ±8°
 'collision' 은 두 로봇 중심이 몸체 폭(0.12 m)보다 가까워진 횟수 (lane_status 에 기록, 시나리오가 확인).
+경로 모드 (route_mode:=true, 기본 false): start 에서 start_yaw 를 보고 IDLE 로 기다리다가 /<ns>/lane_cmd 를 받으면 간다.
+  lane_cmd 에 route(관제 lane_route 가 붙인 경로)가 있으면 그 점들을 따라가고(출발 U턴 포함), go 의 route_back 이 있으면
+  목적지에서 돌아온다. route 가 없으면 차선 지도 A* 로 목표까지 간다. cancel 이면 멈추고 IDLE. lane_status 에 cmd_id 를 낸다.
 """
 import json
 import math
@@ -32,22 +35,29 @@ class LaneMockRobot(Node):
         super().__init__('lane_mock_robot')
         for n, v in (('namespace', 'amr_01'), ('lanes_yaml', ''), ('start', [0.0, 0.0]), ('goal', [0.0, 0.0]),
                      ('peers', ['']), ('speed', 0.15), ('stop_dist', 0.15), ('start_delay', 3.0),
-                     ('traffic_cmd_timeout', 0.0)):
+                     ('traffic_cmd_timeout', 0.0), ('route_mode', False), ('start_yaw', 0.0)):
             self.declare_parameter(n, v)
         gp = lambda n: self.get_parameter(n).value
         self.ns = gp('namespace')
-        gm = GridMap(gp('lanes_yaml'), 0.02)
+        self.gm = gm = GridMap(gp('lanes_yaml'), 0.02)
         s, g = list(gp('start')), list(gp('goal'))
-        self.path = astar(gm, s, g, mask=gm.free)
-        if self.path is None:
-            raise RuntimeError('차선 위 경로 없음')
-        self.i = 0
-        d = self.path[min(3, len(self.path) - 1)] - self.path[0]
-        self.x, self.y, self.yaw = float(self.path[0, 0]), float(self.path[0, 1]), math.atan2(d[1], d[0])
+        self.route_mode = bool(gp('route_mode'))
+        self.cmd_id, self.route_back, self.leg = None, None, 'outbound'
+        if self.route_mode:                              # lane_cmd 를 기다린다
+            self.path, self.i = None, 0
+            self.x, self.y, self.yaw = float(s[0]), float(s[1]), float(gp('start_yaw'))
+            self.create_subscription(String, f'/{gp("namespace")}/lane_cmd', self._on_lane_cmd, 10)
+        else:
+            self.path = astar(gm, s, g, mask=gm.free)
+            if self.path is None:
+                raise RuntimeError('차선 위 경로 없음')
+            self.i = 0
+            d = self.path[min(3, len(self.path) - 1)] - self.path[0]
+            self.x, self.y, self.yaw = float(self.path[0, 0]), float(self.path[0, 1]), math.atan2(d[1], d[0])
         self.speed, self.stop_dist = gp('speed'), gp('stop_dist')
         self.traffic_cmd_timeout = float(gp('traffic_cmd_timeout'))
         self.t_start = time.monotonic() + gp('start_delay')
-        self.state, self.detail = 'DRIVING', 'lane → goal'
+        self.state, self.detail = ('IDLE', 'set goal') if self.route_mode else ('DRIVING', 'lane → goal')
         self.traffic = self.traffic_id = self.role = None
         self.role_t = 0.0
         self.rx = 0.0
@@ -64,7 +74,54 @@ class LaneMockRobot(Node):
         self.create_subscription(String, f'/{self.ns}/lane_traffic_cmd', self._on_cmd, 10)
         self.create_timer(DT, self._step)
         self.create_timer(0.2, self._publish)
-        self.get_logger().info(f'{self.ns}: {s} → {g} 경로 {len(self.path)} 점')
+        if self.path is not None:
+            self.get_logger().info(f'{self.ns}: {s} → {g} 경로 {len(self.path)} 점')
+        else:
+            self.get_logger().info(f'{self.ns}: 경로 모드, ({self.x:.2f}, {self.y:.2f}) 에서 lane_cmd 대기')
+
+    # ---------- 경로 모드 ----------
+    @staticmethod
+    def _dense(points, step=0.02):
+        pts = np.asarray(points, float)
+        out = [pts[0]]
+        for a, b in zip(pts[:-1], pts[1:]):
+            n = max(1, int(math.ceil(np.hypot(*(b - a)) / step)))
+            out += [a + (b - a) * k / n for k in range(1, n + 1)]
+        return np.array(out)
+
+    def _start_leg(self, route):
+        self.path, self.i = self._dense(route['points']), 0
+        if route.get('uturn'):
+            self.yaw = wrap(self.yaw + math.pi)          # 제자리 U턴 (가짜 로봇은 바로 돈다)
+            self.get_logger().info(f'{self.ns}: 출발 U턴')
+
+    def _on_lane_cmd(self, m):
+        try:
+            d = json.loads(m.data)
+            cid, cmd = int(d['id']), d['cmd']
+        except (ValueError, KeyError, TypeError):
+            return
+        if cid == self.cmd_id:
+            return
+        self.cmd_id = cid
+        self.traffic = self.target = self.rejoin = None
+        if cmd == 'cancel':
+            self.path, self.state, self.detail = None, 'IDLE', 'canceled · set goal'
+            return
+        if cmd not in ('go', 'home'):
+            return
+        self.leg, self.route_back = 'outbound', (d.get('route_back') if cmd == 'go' else None)
+        if 'route' in d:
+            self._start_leg(d['route'])
+        else:
+            self.path = astar(self.gm, [self.x, self.y], [d['x'], d['y']], mask=self.gm.free)
+            self.i = 0
+            if self.path is None:
+                self.state, self.detail = 'FAILED', 'no path'
+                return
+        self.state, self.detail = 'DRIVING', 'lane → goal'
+        self.get_logger().info(f'{self.ns}: lane_cmd {cid} {cmd} → ({d["x"]:.2f}, {d["y"]:.2f}), 경로 {len(self.path)} 점'
+                               + (', 돌아오는 길 있음' if self.route_back else ''))
 
     def _on_peer(self, p, m):
         try:
@@ -123,7 +180,7 @@ class LaneMockRobot(Node):
                 self.collisions += 1
                 self.get_logger().error(f'💥 {self.ns} 충돌 ({math.hypot(p[0] - self.x, p[1] - self.y):.3f} m)')
             self.in_contact = close
-        if self.state == 'ARRIVED' or now < self.t_start:
+        if self.state in ('ARRIVED', 'IDLE', 'FAILED') or now < self.t_start or self.path is None:
             return
         if self.traffic is not None:
             return self._traffic_step(now)
@@ -132,6 +189,12 @@ class LaneMockRobot(Node):
             return
         self.detail = 'lane → goal'
         if self.i >= len(self.path) - 1:
+            if self.route_back is not None and self.leg == 'outbound':
+                self.leg = 'inbound'
+                self._start_leg(self.route_back)
+                self.route_back = None
+                self.get_logger().info(f'🎯 {self.ns} 목적지 도착 → 돌아오는 길')
+                return
             self.state, self.detail = 'ARRIVED', 'at target'
             self.get_logger().info(f'🏁 {self.ns} 도착')
             return
@@ -190,8 +253,8 @@ class LaneMockRobot(Node):
         self.y += v * math.sin(self.yaw)
 
     def _publish(self):
-        if self.state == 'ARRIVED':
-            state, detail = 'ARRIVED', 'at target'
+        if self.state in ('ARRIVED', 'IDLE', 'FAILED'):
+            state, detail = self.state, self.detail
         elif self.traffic is not None:
             state, detail = {'HOLD': ('WAITING', 'encounter'), 'YIELDING': ('WAITING', 'yielding'),
                              'YIELDED': ('WAITING', 'yielded'), 'REJOINING': ('RESUME DRIVING', 'back to lane'),
@@ -202,11 +265,13 @@ class LaneMockRobot(Node):
             state, detail = 'OWN DRIVING PRIORITY', 'lane → goal'
         else:
             state, detail = 'DRIVING', 'lane → goal'
-        rem = float(np.hypot(*np.diff(self.path[self.i:], axis=0).T).sum()) if self.i < len(self.path) - 1 else 0.0
+        rem = (float(np.hypot(*np.diff(self.path[self.i:], axis=0).T).sum())
+               if self.path is not None and self.i < len(self.path) - 1 else 0.0)
         self.pub.publish(String(data=json.dumps({
             'robot': self.ns, 'mission': 'lane', 'state': state, 'detail': detail, 'dist': round(rem, 2),
             'pose': [round(self.x, 3), round(self.y, 3), round(self.yaw, 3)], 'localized': True,
-            'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.role, 'collisions': self.collisions})))
+            'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.role, 'collisions': self.collisions,
+            'cmd_id': self.cmd_id, 'leg': self.leg})))
 
 
 def main():
