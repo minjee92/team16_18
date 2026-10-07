@@ -31,4 +31,11 @@
         <remap from="/tf_static" to="tf_static"/>
         <param name="use_sim_time" value="$(var use_sim_time)"/>
     </node>
+
+    <!-- 벽에서 빠져나오기: Nav2 복구(BackUp 등)는 이미 벽에 붙으면 충돌 검사로 실패하므로, 라이다를 직접 보며 벽 반대로 조금 이동한다.
+         관제(fleet_traffic)가 Nav2 목표를 취소한 뒤 escape_cmd 로 요청할 때만 움직인다 -->
+    <node pkg="pinky_fms_bringup" exec="fms_escape.py" name="fms_escape" namespace="$(var namespace)" output="screen">
+        <remap from="/tf" to="tf"/>
+        <remap from="/tf_static" to="tf_static"/>
+    </node>
 </launch>

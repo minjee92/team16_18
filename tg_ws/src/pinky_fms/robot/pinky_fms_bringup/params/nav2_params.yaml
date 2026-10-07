@@ -3,7 +3,7 @@
 # 값은 그대로 가져왔고, 아래 변환은 nav2_namespaced.launch.py 가 실행할 때 자동으로 한다 (이 파일에는 반영하지 않음).
 #   - 노드 키를 /<로봇>/<노드> 전체 이름으로 바꾼다
 #   - costmap 의 `topic: /scan` 을 /<로봇>/scan 으로 바꾼다
-# 변경 이력(amr_01 튜닝값 대비): inflation_radius 0.05 -> 0.08, cost_scaling_factor 15 -> 10 (지역·전역 costmap 모두); 2026-10-03 inflation_radius 0.08 -> 0.12, rotate_to_heading_min_angle 0.35 -> 1.2, local_costmap resolution 0.05 -> 0.025, planner tolerance 0.5 -> 0.10, allow_unknown true -> false, global_costmap scan -> scan_robotfree, amcl set_initial_pose true -> false
+# 변경 이력(amr_01 튜닝값 대비): inflation_radius 0.05 -> 0.08, cost_scaling_factor 15 -> 10 (지역·전역 costmap 모두); 2026-10-03 inflation_radius 0.08 -> 0.12, rotate_to_heading_min_angle 0.35 -> 1.2, local_costmap resolution 0.05 -> 0.025, planner tolerance 0.5 -> 0.10, allow_unknown true -> false, global_costmap scan -> scan_robotfree, amcl set_initial_pose true -> false; 2026-10-06 global_costmap resolution 0.05 -> 0.025, footprint_padding 0.01 -> 0.0 (벽에서 중심 9 cm 출발도 계획 실패하던 것 완화), goal xy_goal_tolerance 0.05 -> 0.08, yaw_goal_tolerance 0.05 -> 0.25
 # 값을 튜닝할 때는 이 파일만 고치고 로봇에 pinky_fms_bringup 을 다시 복사해 빌드한다. (기존 pinky_pro 는 건드리지 않는다)
 amcl:
   ros__parameters:
@@ -162,8 +162,8 @@ controller_server:
     general_goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
       stateful: true
-      xy_goal_tolerance: 0.05                    # [m] 목표 지점 반경 0.25m 안에 들어오면 도착 인정
-      yaw_goal_tolerance: 0.05                   # [rad] 목표 각도 오차 약 14도 이내면 올바르게 본 것으로 인정
+      xy_goal_tolerance: 0.08                    # [m] 목표 반경 8 cm 안이면 도착 인정. FMS: 0.05 -> 0.08 (5 cm 는 벽 가까운 목표에서 맴돌다 Nav2 실패, 실물 2026-10-06 2분 이상 지연)
+      yaw_goal_tolerance: 0.25                   # [rad] 목표 방향 오차 약 14도 이내면 인정. FMS: 0.05(3도) -> 0.25 (제자리에서 방향을 20초씩 맞추던 것 방지)
 
     # ==========================================================
     # 4. 주행 진척도 검사 (Progress Checker)
@@ -223,14 +223,14 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      footprint_padding: 0.01 #origin 0.03
+      footprint_padding: 0.0 #origin 0.03, FMS: 0.01 -> 0.0 (몸체 반폭 0.06 만 장애물로 봄 = 벽에서 중심 약 8 cm 까지 출발·통과 가능)
       update_frequency: 1.0
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_footprint
       #robot_radius: 0.22
       footprint: '[[0.06, 0.06], [0.06, -0.06], [-0.06, -0.06], [-0.06, 0.06]]'
-      resolution: 0.05
+      resolution: 0.025   # FMS: 0.05 -> 0.025 (칸이 크면 벽 칸·로봇 칸이 반 칸씩 가깝게 잡혀 벽 근처 출발점이 충돌로 판정됨)
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       obstacle_layer:

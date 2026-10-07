@@ -18,6 +18,13 @@ defaults:
   mode: ssh                     # ssh: 실제 로봇에 SSH 로 접속 / local: 이 PC 에서 가짜 로봇 실행(테스트)
   ws_setup: source /opt/ros/jazzy/setup.bash && source ~/pinky_pro/install/setup.bash   # 로봇의 colcon 워크스페이스
   launch_cmd: ros2 launch pinky_fms_bringup robot_bringup.launch.xml namespace:={namespace}
+  # 주행 스택: 미션 종류에 따라 bringup 위에 하나만 띄운다 (둘 다 cmd_vel 을 쓰므로 동시에 띄우지 않는다).
+  # GUI 에서 미션을 실행하면 백엔드가 SSH 로 켜고 끈다. {namespace} = 로봇 ID, {map} = robot_map, {lane_map} = lane_map
+  stacks:
+    nav: ros2 launch pinky_fms_bringup robot_nav.launch.xml namespace:={namespace} map:={map}       # Goal Navigation / Coordinated Fleet Navigation
+    lane: ros2 launch pinky_fms_bringup robot_lane.launch.xml namespace:={namespace} map:={lane_map}   # Vision-based Lane Following (미션 선택 시 실행, 목적지는 Go 때 lane_cmd 로)
+  robot_map: /home/pinky/mission4_3_clean_1cm.yaml   # 로봇에 있는 Nav2 지도 (관제PC 의 traffic_core 지도와 같은 좌표여야 한다)
+  lane_map: /home/pinky/mission4_3_lanes_1cm.yaml    # Lane Following 용 지도: 벽은 같고 차선만 빈 칸 (갈림길·출발 방향 판단이 차선을 따라간다). 같은 좌표여야 한다
 
 # (선택) GUI 에 항상 표시할 고정 로봇. 키가 로봇 ID = namespace. GUI 에서는 지울 수 없다.
 # 보통은 비워 두고 GUI 의 '로봇 추가'를 쓴다.

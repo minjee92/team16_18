@@ -21,7 +21,6 @@ MARGIN = 0.06             # 위치추정·주행 오차 여유
 R_CONF = 2 * R_BODY + MARGIN * 0 + 0.05    # 두 로봇 중심이 이보다 가까우면 충돌 위험
 T_GAP = 3.0               # 같은 곳을 이 시간(s) 안에 지나가면 충돌 예정
 T_GAP_NARROW = 8.0        # 좁은 통로는 한 대씩
-YIELD_SEP = 0.22          # 비켜선 자리와 상대 경로 사이 최소 거리 (몸체 지름 0.19 + 여유 0.03)
 STAND_CLEAR = 0.17        # 비켜서서 기다릴 수 있는 최소 여유 (실제 Nav2 가 계획·회전할 수 있는 거리. 0.10 m 에서는 collision ahead 로 실패했다)
 RETREAT_MAX = 2.0         # 교착 때 후진으로 물러날 수 있는 최대 거리 (m)
 YIELD_HORIZON = 6.0       # 상대가 충돌 지점에 이 시간(s) 안에 오지 않으면 아직 비켜서지 않는다
@@ -56,11 +55,13 @@ class Command:
 
 
 class TrafficManager:
-    def __init__(self, gm, r_conf=R_CONF, r_conf_parked=0.30):
+    def __init__(self, gm, r_conf=R_CONF, r_conf_parked=0.30, yield_sep=None):
         self.gm = gm
         self.r_conf = r_conf
         self.r_conf_parked = min(r_conf_parked, r_conf)   # 서 있는 로봇과는 더 가까이 지나가도 된다 (움직이는 로봇끼리보다 오차 여유를 덜 둔다)
-        self.yield_sep = r_conf                       # 비켜선 자리와 상대 경로 사이 최소 거리 = 충돌 판정 거리 (작으면 비켜선 뒤에도 '막고 있다'로 판정돼 반복한다)
+        # 비켜선 자리와 상대 경로 사이 최소 거리. 충돌 판정 거리보다 작으면 비켜선 뒤에도 '막고 있다'로 판정돼 반복하므로 그 이상으로만 둔다.
+        # 실물 Nav2 는 계획 경로보다 코너를 더 깎아 지나가므로(2026-10-06 실물: 비켜선 자리에서 8 cm 옆을 지나감) 여유를 더 줄 수 있다.
+        self.yield_sep = max(r_conf, yield_sep if yield_sep is not None else r_conf)
         self.straight_tries = {}                      # (id,id) -> 똑바로 후진한 횟수 (교착이 안 풀릴 때 마지막 수단, 3번까지)
         self.last_bay = {}                            # 로봇 -> 직전에 고른 passing bay (같은 곳을 유지해 목표가 계속 바뀌는 것을 막는다)
         # 통로 폭: 가운데 선(여유가 국소 최대인 칸)의 여유×2 를 각 칸이 가장 가까운 가운데 선에서 물려받는다.

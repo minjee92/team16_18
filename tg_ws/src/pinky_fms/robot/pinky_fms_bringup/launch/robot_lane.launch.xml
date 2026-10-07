@@ -1,0 +1,65 @@
+<?xml version='1.0' ?>
+<!--
+  FMS 미션: Vision-based Lane Following (목적지 왕복). robot_bringup 이 먼저 실행 중이어야 한다.
+    ros2 launch pinky_fms_bringup robot_lane.launch.xml namespace:=amr_01 map:=/home/pinky/mission4_3_clean_1cm.yaml
+  보통은 GUI 에서 미션을 Vision-based Lane Following 으로 고르면 백엔드가 실행한다 (목적지 없이 대기).
+  목적지는 Go 를 누를 때 관제가 lane_cmd 로 보낸다. goal_x/goal_y 를 주면 위치가 잡히는 대로 바로 출발 (터미널 시험용).
+
+  - 위치: Nav2 전체가 아니라 map_server + AMCL 만 띄운다 (관제와 같은 지도 좌표). Init Pose 를 받아야 출발한다.
+  - 주행: pinky_autonomous 의 차선 추종을 상속한 fms_lane_mission 노드 (원본 노드는 수정하지 않음).
+  - LCD: 이 노드는 LCD 를 쓰지 않는다 (enable_lcd=false). 상태(lane_status)는 fms_lcd_status 가 표시한다.
+  - Nav2(robot_nav)와 동시에 띄우지 않는다 (cmd_vel 충돌). 백엔드가 한쪽만 실행한다.
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <arg name="map" default=""/>
+    <arg name="goal_x" default="nan"/>
+    <arg name="goal_y" default="nan"/>
+    <arg name="goal_arrive_dist" default="0.30"/>
+    <arg name="model_path" default="/home/pinky/yolo_drive/best_ncnn_model"/>
+    <arg name="drive_speed" default="0.15"/>   <!-- 차선 추종 기준 속도 (m/s). 횡단보도·장애물 감속(×0.5)과 코너 감속도 이 값을 기준으로 한다 -->
+    <arg name="return_arrive_dist" default="0.30"/>
+    <arg name="yolo_conf" default="0.50"/>   <!-- 차선·횡단보도 검출 최소 신뢰도 (갈림길은 junction_conf 0.35). 로봇마다 원본 기본값이 달라 여기서 고정 -->
+    <arg name="run_adc_sensor" default="true"/>
+    <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
+
+    <!-- 위치추정만 (map_server + AMCL), namespace 보정은 Nav2 와 같은 래퍼를 쓴다 -->
+    <include file="$(find-pkg-share pinky_fms_bringup)/launch/nav2_namespaced.launch.py">
+        <arg name="namespace" value="$(var namespace)"/>
+        <arg name="map" value="$(var map)"/>
+        <arg name="params_file" value="$(var params_file)"/>
+        <arg name="nav_launch" value="localization_launch.xml"/>
+    </include>
+
+    <group>
+        <push-ros-namespace namespace="$(var namespace)"/>
+        <set_remap from="/tf" to="tf"/>
+        <set_remap from="/tf_static" to="tf_static"/>
+
+        <node pkg="pinky_lamp_control" exec="main_node" name="pinky_lamp_control" output="screen"/>
+        <node pkg="pinky_sensor_adc" exec="main_node" name="pinky_sensor_adc" output="screen" if="$(var run_adc_sensor)">
+            <remap from="batt_state" to="adc/batt_state"/>
+        </node>
+
+        <node pkg="pinky_fms_bringup" exec="fms_lane_mission.py" name="fms_lane_mission" output="screen"
+              sigterm_timeout="10" sigkill_timeout="15">
+            <param name="robot_name" value="$(var namespace)"/>
+            <param name="goal_x" value="$(var goal_x)"/>
+            <param name="goal_y" value="$(var goal_y)"/>
+            <param name="goal_arrive_dist" value="$(var goal_arrive_dist)"/>
+            <param name="model_path" value="$(var model_path)"/>
+            <param name="drive_speed" value="$(var drive_speed)"/>
+            <param name="yolo_conf" value="$(var yolo_conf)"/>
+            <!-- 앞 사물(초음파 + 라이다 앞 통로, 지도 벽 제외): 0.35 m 감속, 0.15 m 정지, 횡단보도 확인 중 0.30 m 정지 -->
+            <param name="obstacle_dist" value="0.35"/>
+            <param name="ultrasonic_stop_dist" value="0.15"/>
+            <param name="return_arrive_dist" value="$(var return_arrive_dist)"/>
+            <param name="enable_return_home" value="true"/>
+            <param name="enable_lcd" value="false"/>
+            <param name="map_topic" value="map"/>                     <!-- /<ns>/map (map_server, transient_local) -->
+            <param name="lane_classes" value="['left_lane', 'right_lane']"/>
+            <param name="crosswalk_classes" value="['crosswalk']"/>
+            <param name="junction_classes" value="['cross_lane']"/>
+        </node>
+    </group>
+</launch>
