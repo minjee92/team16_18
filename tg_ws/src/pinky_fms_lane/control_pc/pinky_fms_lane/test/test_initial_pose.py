@@ -7,7 +7,8 @@ import pytest
 
 from pinky_fms_lane.course import Course
 from pinky_fms_lane.initial_pose import (
-    chain, compose, covariance, evaluate, parse_targets, scan_match, start_pose, stds)
+    axis_summary, chain, compose, covariance, diagnosis, direction_offsets, evaluate, expected_ranges,
+    parse_targets, scan_match, start_pose, stds)
 
 COURSE = {
     'points': {'J': {'x': 0.0, 'y': 1.0}, 'TE': {'x': -1.0, 'y': 1.0}, 'NE': {'x': 1.0, 'y': 1.0},
@@ -79,3 +80,60 @@ def test_evaluate():
     assert not ok and '스캔 일치율' in why[0]
     assert evaluate((0, 0, 0), good, None, dict(LIMITS, need_match=False)) == (True, [])
     assert not evaluate((0, 0, 0), good, None, LIMITS)[0]
+
+
+def room(width, height, res=0.01):
+    """가로 width, 세로 height (m) 방. 벽 안쪽 면이 x=0, x=width, y=0, y=height. 원점 (-0.1, -0.1)."""
+    w, h = int(round((width + 0.2) / res)), int(round((height + 0.2) / res))
+    occ = np.zeros((h, w), bool)
+    occ[:10, :] = occ[-10:, :] = True
+    occ[:, :10] = occ[:, -10:] = True
+    return occ, res, (-0.1, -0.1)
+
+
+ANGLES = np.radians(np.arange(0, 360, 1.0))
+
+
+def scan_from(occ, res, origin, x, y):
+    return expected_ranges(occ, res, origin, x, y, ANGLES, 3.5)
+
+
+def test_expected_ranges_in_a_room():
+    occ, res, origin = room(2.0, 1.0)
+    r = expected_ranges(occ, res, origin, 0.5, 0.4, np.array([0.0, np.pi / 2, np.pi, -np.pi / 2]), 3.5)
+    assert r == pytest.approx([1.5, 0.6, 0.5, 0.4], abs=0.006)
+
+
+def test_map_too_small_shows_as_size_difference():
+    real = room(2.0, 1.08)                                  # 실제 방은 세로 108 cm
+    occ, res, origin = room(2.0, 1.0)                        # 지도는 세로 100 cm (위 벽이 8 cm 안쪽)
+    measured = scan_from(*real, 0.5, 0.4)
+    off = direction_offsets(ANGLES, measured, scan_from(occ, res, origin, 0.5, 0.4), 0.05, 3.5)
+    assert off['up'][0] == pytest.approx(0.08, abs=0.01) and off['down'][0] == pytest.approx(0.0, abs=0.01)
+    size, shift = axis_summary(off)['vertical']
+    assert size == pytest.approx(0.08, abs=0.01)             # 로봇 위치와 상관없이 크기 차이만 남는다
+    assert axis_summary(off)['horizontal'][0] == pytest.approx(0.0, abs=0.01)
+    assert any('세로 지도 크기 차이' in n for n in diagnosis(axis_summary(off)))
+
+
+def test_robot_offset_shows_as_shift_not_size():
+    occ, res, origin = room(2.0, 1.0)
+    measured = scan_from(occ, res, origin, 0.5, 0.45)        # 실제 로봇은 5 cm 위에 있는데
+    amcl_view = scan_from(occ, res, origin, 0.5, 0.40)       # AMCL 은 0.40 이라고 봄
+    off = direction_offsets(ANGLES, measured, amcl_view, 0.05, 3.5)
+    size, shift = axis_summary(off)['vertical']
+    assert size == pytest.approx(0.0, abs=0.01) and shift == pytest.approx(0.05, abs=0.01)
+    notes = diagnosis(axis_summary(off))
+    assert any('로봇 위치 어긋남' in n for n in notes) and not any('지도 크기' in n for n in notes)
+
+
+def test_direction_offsets_ignore_obstacles_and_missing_sides():
+    occ, res, origin = room(2.0, 1.0)
+    exp = scan_from(occ, res, origin, 0.5, 0.4)
+    measured = exp.copy()
+    measured[80:100] = 0.2                                   # 위쪽 빔 일부를 다른 로봇이 가림 → 빼야 한다
+    off = direction_offsets(ANGLES, measured, exp, 0.05, 3.5)
+    assert off['up'][0] == pytest.approx(0.0, abs=0.005) and off['up'][1] < 61
+    off = direction_offsets(ANGLES, np.full(360, np.inf), exp, 0.05, 3.5)
+    assert off['up'] == (None, 0) and axis_summary(off)['vertical'] == (None, None)
+    assert diagnosis(axis_summary(off)) == []
