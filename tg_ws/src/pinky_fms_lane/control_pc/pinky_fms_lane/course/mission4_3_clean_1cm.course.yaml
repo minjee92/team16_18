@@ -1,0 +1,66 @@
+# 차선 코스: mission4_3_clean_1cm 지도 위의 테이프 길 (map 좌표, m)
+#
+# source: estimate = 추정값. course_ref/course_overlay_mission4_3.png 추정도와 위에서 찍은 사진으로 어림 (오차 5~10 cm)
+#         measured = 실측값. 로봇을 차선 위에 세워 기록 도구로 잰 값. measured 파일에 저장되고, 같은 이름의 추정값을 덮어쓴다
+# 코드에는 좌표가 없다. 코스가 바뀌면 이 파일만 고친다.
+#
+# 간선(edges) 의 points 순서가 + 방향이다. oneway 간선은 + 방향으로만 다닌다.
+# 고리를 반시계방향으로 바꾸려면 loop 의 points 순서를 뒤집고 junctions.J.moves 를 그 방향에 맞게 다시 정해야 한다.
+
+map: mission4_3_clean_1cm            # 이 좌표가 맞는 지도 이름 (확인용)
+measured: mission4_3_clean_1cm.measured.yaml   # 실측값 파일 (이 파일 기준 상대 경로). 없으면 추정값만 쓴다
+
+params:
+  snap_max: 0.15             # 클릭한 목표를 길 위로 맞출 최대 거리 (m). 더 멀면 거부
+  dead_end_clearance: 0.15   # 막다른 끝에서 이 거리 안에는 목표를 두지 않는다 (U턴 공간, m)
+  wait_keepout: 0.15         # 대기 지점 앞뒤 이 거리 안에는 목표를 두지 않는다 (m)
+  uturn_clearance: 0.10      # 제자리 U턴에 필요한 벽까지 최소 거리 (m, 지도로 확인)
+  uturn_penalty: 0.5         # 경로를 고를 때 U턴 1번을 이만큼(m) 먼 길로 친다
+  lane_width: 0.14           # 테이프 안쪽 길 폭 (m, 추정. 실측 필요)
+
+points:
+  # 갈림길과 막다른 끝
+  J:      {x: 1.14, y: 0.98,  source: estimate}   # T자 갈림길 중심 (꼬리 윗길 = 고리 윗변, 고리 왼변이 아래로 갈라짐)
+  T_END:  {x: 0.93, y: 0.26,  source: estimate}   # 꼬리 막다른 끝 (가운데 벽 앞)
+  # 꼬리 꺾이는 점 (J 에서 꼬리 끝 쪽으로)
+  T_A:    {x: 0.21, y: 0.98,  source: estimate}   # 위 왼쪽 굽이 시작
+  T_B:    {x: 0.06, y: 0.85,  source: estimate}   # 왼쪽 세로 구간 위
+  T_C:    {x: 0.09, y: 0.33,  source: estimate}   # 왼쪽 세로 구간 아래
+  T_D:    {x: 0.21, y: 0.255, source: estimate}   # 아래 왼쪽 굽이 끝
+  # 고리 모서리 (J 가 왼쪽 위 모서리)
+  NE:     {x: 1.99, y: 0.975, source: estimate}
+  SE:     {x: 1.99, y: 0.10,  source: estimate}
+  SW:     {x: 1.15, y: 0.10,  source: estimate}
+  # 대기 지점 (후보. 확정 아님)
+  W_LOOP: {x: 1.15, y: 0.66,  source: estimate}   # 고리 왼변, J 아래 약 0.32 m. 꼬리로 들어가거나 J 를 지나기 전에 기다리는 곳
+  W_TAIL: {x: 0.75, y: 0.985, source: estimate}   # 꼬리 윗길, 횡단보도 C1 서쪽. 꼬리에서 나가기 전에 기다리는 곳
+  # 횡단보도
+  C1:     {x: 0.96, y: 0.99,  source: estimate}   # 꼬리 윗길, J 바로 서쪽
+  C2:     {x: 1.99, y: 0.51,  source: estimate}   # 고리 오른변 가운데
+  # 출발점 (초기 위치 지정용. yaw = 로봇이 보는 방향, rad. 0 = 지도 +x(오른쪽), 3.14 = 왼쪽)
+  R1:     {x: 0.78, y: 0.25, yaw: 3.14, source: estimate}   # 로봇 1(검은 로봇), 꼬리 끝, 출구(서쪽)를 봄
+  R2:     {x: 1.99, y: 0.10, yaw: 3.14, source: estimate}   # 로봇 2, 고리 SE 빨간 테이프. 시계방향이면 서쪽(아랫변 방향)을 봐야 함
+
+edges:
+  tail:                      # 꼬리: J 에서 꼬리 끝까지. 양방향 1차선 막다른 길
+    points: [J, T_A, T_B, T_C, T_D, T_END]
+    oneway: false
+  loop:                      # 고리: J 에서 시계방향 한 바퀴 (윗변 → 오른변 → 아랫변 → 왼변). 일방통행
+    points: [J, NE, SE, SW, J]
+    oneway: true
+
+junctions:
+  J:
+    radius: 0.20             # 갈림길 구역 반지름 (m). 한 번에 1대만 들어가고, 목표·대기를 두지 않는다
+    moves:                   # 들어온 간선 → 나갈 간선 별 동작. follow = 갈림길에서 따라갈 테이프 (사진으로 확인한 테이프 이어짐 기준)
+      - {from: tail, to: loop, turn: STRAIGHT, follow: LEFT,  follow_dist: 0.30}   # 꼬리에서 나와 윗변으로 직진: 위쪽 바깥 테이프가 끊기지 않고 이어짐
+      - {from: loop, to: tail, turn: LEFT,     follow: LEFT,  follow_dist: 0.30}   # 왼변에서 꼬리로 좌회전: 왼변 서쪽 테이프가 꼬리 안쪽 테이프로 꺾임
+      - {from: loop, to: loop, turn: RIGHT,    follow: RIGHT, follow_dist: 0.30}   # 왼변에서 윗변으로 우회전: 상자 둘레 테이프가 윗변으로 꺾임
+
+waits:
+  W_LOOP: {point: W_LOOP}
+  W_TAIL: {point: W_TAIL}
+
+crosswalks:
+  C1: {point: C1, radius: 0.10}   # 반지름 안에는 목표를 두지 않는다 (m)
+  C2: {point: C2, radius: 0.10}
