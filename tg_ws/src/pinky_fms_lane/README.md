@@ -250,8 +250,9 @@ ros2 run pinky_fms_lane make_lane_map --map $MAP      # GUI 표시용 차선 지
 
 - 키보드 조종 중에는 cmd_vel 을 내는 노드가 **teleop 하나뿐**이어야 한다. 아래를 같이 띄우지 않는다:
   - `pinky_fms_bringup robot_autonomous.launch.xml` / `pinky_autonomous autonomous_drive.launch.xml` (차선 주행)
-  - 앞으로 만들 `robot_lane.launch.xml` (차선 실행기 + 게이트)
+  - `pinky_fms_bringup robot_lane.launch.xml` (팀원 차선 미션 스택)
   - `pinky_fms_bringup robot_nav.launch.xml` (Nav2)
+- **GUI 에서 미션을 Lane Following 으로 고르면 백엔드가 로봇에 `robot_lane` 을 띄운다.** 그 안의 `fms_lane_mission` 은 목적지가 없어도 0 속도를 계속(10 Hz) 내므로 키보드 조종과 부딪힌다 (로봇이 멈칫거리거나 안 움직임). 키보드로 기록하는 날에는 GUI 에서 Lane 미션을 고르지 않는다. 이미 골랐으면 GUI 에서 스택을 끄거나 OFF 후 다시 ON.
 - 카메라 녹화는 cmd_vel 을 내지 않는 `robot_camera_view` 만 쓴다. 카메라를 독점하므로 차선 노드와 둘 중 하나만 뜬다.
 - 키보드를 켜기 전과 후에 확인: `ros2 topic info /amr_01/cmd_vel` → 켜기 전 `Publisher count: 0`, 켠 뒤 `1`. 2 이상이면 키보드를 `k` 로 세우고 다른 노드부터 끈다.
 - 차선 주행을 시험하려면 키보드(R3)를 먼저 끄고, camera_view(R2)도 끈 뒤 띄운다.
@@ -265,6 +266,6 @@ cd $FMS_WS/src/pinky_fms_lane/control_pc/pinky_fms_lane && python3 -m pytest tes
 cd $FMS_WS/src/pinky_fms_lane/robot/pinky_fms_lane_robot && python3 -m pytest test        # camera_view (가짜 카메라·모델)
 FMS_WS=$FMS_WS $FMS_WS/src/pinky_fms_lane/robot/pinky_fms_lane_robot/tests/run_localization_test.sh      # 도메인 92
 FMS_WS=$FMS_WS $FMS_WS/src/pinky_fms_lane/control_pc/pinky_fms_lane/tests/run_initial_pose_test.sh       # 도메인 95
-FMS_WS=$FMS_WS $FMS_WS/src/pinky_fms_lane/control_pc/pinky_fms_lane/tests/run_record_test.sh             # 도메인 96
+FMS_WS=$FMS_WS $FMS_WS/src/pinky_fms_lane/control_pc/pinky_fms_lane/tests/run_record_test.sh             # 도메인 97 (팀원 run_lane_test.sh 가 96)
 ```
 ROS 격리 시험은 가짜 로봇(`fake_base.py`)을 쓰고 이 PC 안에서만 통신한다. 먼저 `source ~/pinky/install/setup.bash` (pinky_navigation).

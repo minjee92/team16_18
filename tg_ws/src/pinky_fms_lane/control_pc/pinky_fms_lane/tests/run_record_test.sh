@@ -1,5 +1,5 @@
 #!/bin/bash
-# 좌표 기록 도구(record_course_points) 격리 시험: 도메인 96, 이 PC 안에서만 (실제 스택·로봇과 무관).
+# 좌표 기록 도구(record_course_points) 격리 시험: 도메인 97 (팀원 run_lane_test.sh 가 96), 이 PC 안에서만 (실제 스택·로봇과 무관).
 # 가짜 로봇(pinky_fms_lane_robot/tests/fake_base.py)을 R1 에 두고, 위치 추정 launch + send_initial_pose 뒤 기록한다.
 # 코스 파일은 임시 폴더에 복사해서 쓰므로 저장소의 코스 파일은 바뀌지 않는다.
 #   FMS_WS=<tg_ws 경로> tests/run_record_test.sh
@@ -14,7 +14,7 @@ COURSE_DIR=$SRC/pinky_fms_lane/control_pc/pinky_fms_lane/course
 FAKE=$SRC/pinky_fms_lane/robot/pinky_fms_lane_robot/tests/fake_base.py
 NS=amr_01
 source /opt/ros/jazzy/setup.bash; source $ROOT/install/setup.bash
-export ROS_DOMAIN_ID=96 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST PYTHONUNBUFFERED=1
+export ROS_DOMAIN_ID=97 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST PYTHONUNBUFFERED=1
 unset CYCLONEDDS_URI ROS_LOCALHOST_ONLY
 TMP=$(mktemp -d /tmp/rectest.XXXXXX)
 cp $COURSE_DIR/mission4_3_clean_1cm.course.yaml $COURSE_DIR/mission4_3_clean_1cm.tape.yaml $TMP/
