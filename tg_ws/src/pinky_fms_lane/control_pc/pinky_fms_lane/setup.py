@@ -12,6 +12,7 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/course', glob('course/*.yaml')),
+        ('share/' + package_name + '/launch', glob('launch/*.xml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -28,6 +29,7 @@ setup(
             'course_tape = pinky_fms_lane.tape:main',
             'make_lane_map = pinky_fms_lane.lane_map:main',
             'record_course_points = pinky_fms_lane.record_points:main',
+            'lane_route = pinky_fms_lane.lane_route:main',
         ],
     },
 )

@@ -1,0 +1,17 @@
+<?xml version='1.0' ?>
+<!--
+  차선 미션 경로 계획 (관제 PC). GUI 가 robots.yaml 의 lane_route: true 일 때 목표를 /fleet/lane_goal 로 보내면,
+  코스 모델로 길 위에 맞추고 경로·갈림길 동작을 붙여 /<ns>/lane_cmd 로 보낸다.
+    ros2 launch pinky_fms_lane lane_route.launch.xml map_yaml:=<clean 지도.yaml>
+  map_yaml 은 U턴 자리의 벽 여유 확인용 clean 지도다 (차선 지도가 아님).
+-->
+<launch>
+    <arg name="course" default="$(find-pkg-share pinky_fms_lane)/course/mission4_3_clean_1cm.course.yaml"/>
+    <arg name="map_yaml" default=""/>
+    <arg name="arrive_tol" default="0.05"/>
+    <node pkg="pinky_fms_lane" exec="lane_route" name="lane_route" output="screen">
+        <param name="course" value="$(var course)"/>
+        <param name="map_yaml" value="$(var map_yaml)"/>
+        <param name="arrive_tol" value="$(var arrive_tol)"/>
+    </node>
+</launch>
