@@ -15,6 +15,7 @@ import pytest
 
 rclpy = pytest.importorskip('rclpy')
 pytest.importorskip('pinky_autonomous.autonomous_drive_node')
+from sensor_msgs.msg import Range  # noqa: E402
 from std_msgs.msg import String  # noqa: E402
 
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts', 'fms_lane_mission.py')
@@ -88,6 +89,7 @@ def test_defaults_keep_old_behavior_except_requested(mod, monkeypatch, cleanup):
     cleanup.append(n)
     assert n.link_timeout == 0.0             # 노드 기본: 관제 신호 검사 끔 (robot_lane.launch.xml 이 2.0 으로 켬)
     assert n.traffic_cmd_timeout == 0.0      # 10 s 자동 재개 끔 (사용자 결정 2026-10-08)
+    assert n.sonar_zero_stop == 3
 
 
 def test_link_lost_holds_then_resumes_and_shifts_timers(mod, monkeypatch, cleanup):
@@ -143,3 +145,28 @@ def test_hold_released_by_resume_and_cancel(mod, monkeypatch, cleanup):
     n._on_traffic_cmd(String(data=json.dumps({'id': 3, 'cmd': 'hold'})))
     n._on_cmd(String(data=json.dumps({'id': 9, 'cmd': 'cancel'})))
     assert n.traffic is None and n.goal is None
+
+
+def sonar(n, r, k=1):
+    for _ in range(k):
+        m = Range()
+        m.range, m.max_range = r, 2.0
+        n._sonar_callback(m)
+
+
+def test_sonar_zero_ignored_once_but_stops_after_n(mod, monkeypatch, cleanup):
+    n = make_node(mod, monkeypatch, sonar_zero_stop_count=3)
+    cleanup.append(n)
+    n.lidar_t = 0.0                          # 라이다 없음 (초음파만 본다)
+    sonar(n, 0.5, 3)
+    now = time.monotonic()
+    assert n._sonar_distance(now) == pytest.approx(0.5 * n.sonar_scale + n.sonar_offset)
+    sonar(n, 0.0, 2)                         # 중앙값도 0 이 되지만 연속 2번 → 아직 무시
+    assert n._sonar_distance(time.monotonic()) == float('inf')
+    sonar(n, 0.0, 1)                         # 3번 연속 → 사물로 보고 0 m
+    assert n._sonar_distance(time.monotonic()) == 0.0
+    sonar(n, 0.5, 3)                         # 정상 값이 오면 풀린다
+    assert n.sonar_zero_streak == 0 and n._sonar_distance(time.monotonic()) > 0.5
+    n.sonar_zero_stop = 0                    # 예전 동작: 항상 무시
+    sonar(n, 0.0, 5)
+    assert n._sonar_distance(time.monotonic()) == float('inf')

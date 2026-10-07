@@ -32,6 +32,8 @@ pinky_autonomous 의 AutonomousDriveNode 를 수정하지 않고 상속해서 �
   관제 신호 끊김 정지 (fms_link_timeout > 0 일 때, 기본 0 = 끔. robot_lane.launch.xml 은 2.0 으로 켠다):
      관제 lane_traffic 이 /fleet/lane_heartbeat 를 짧은 주기로 보낸다. 미션 중에 이 시간 넘게 못 받으면 그 자리에 멈추고
      (차선 추종·양보 이동 모두), 신호가 다시 오면 멈춘 시간만큼 시간 기준을 미루고 이어 간다.
+  초음파 0 값: 0.02 m 미만 값은 센서 오류로 자주 나와 무시하지만, sonar_zero_stop_count 번 연속이면 앞에 붙은 사물로 보고 정지한다
+     (0 이면 예전처럼 항상 무시).
   상태는 lane_status (std_msgs/String JSON) 로 5 Hz 발행 → 로봇 LCD(fms_lcd_status)와 관제가 표시한다.
   LCD 는 이 노드가 직접 쓰지 않는다 (launch 에서 enable_lcd:=false).
 """
@@ -95,13 +97,16 @@ class FmsLaneMission(AutonomousDriveNode):
         self.tr_at = False                     # 목표 위치 도착 (이후 방향만 맞춤)
         self.tr_role_t = 0.0
         self.create_subscription(String, 'lane_traffic_cmd', self._on_traffic_cmd, 10)
-        # 안전 보완 (2026-10-08): 관제 신호 끊김 정지, 양보 명령 시간 초과 시 자동 재개(기본 끔)
+        # 안전 보완 (2026-10-08): 관제 신호 끊김 정지, 양보 명령 시간 초과 시 자동 재개(기본 끔), 초음파 0 값 연속이면 정지
         self.declare_parameter('fms_link_timeout', 0.0)        # s. 0 = 끔. 미션 중 /fleet/lane_heartbeat 를 이 시간 넘게 못 받으면 정지
         self.declare_parameter('traffic_cmd_timeout', 0.0)     # s. 0 = 끔(resume·cancel 로만 풀림). 예전 동작은 10.0
+        self.declare_parameter('sonar_zero_stop_count', 3)     # 초음파 0.02 m 미만이 이만큼 연속이면 사물로 보고 정지. 0 = 항상 무시
         self.link_timeout = float(self.get_parameter('fms_link_timeout').value)
         self.traffic_cmd_timeout = float(self.get_parameter('traffic_cmd_timeout').value)
+        self.sonar_zero_stop = int(self.get_parameter('sonar_zero_stop_count').value)
         self.hb_t = None                       # 마지막 관제 신호 수신 시각 (monotonic)
         self.link_hold_t = None                # 관제 신호가 끊겨 멈춘 시각 (None = 정상)
+        self.sonar_zero_streak = 0
         self.create_subscription(String, '/fleet/lane_heartbeat', self._on_heartbeat, 10)
         self.create_timer(0.1, self._traffic_step)
         qos_map = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE)
@@ -199,10 +204,23 @@ class FmsLaneMission(AutonomousDriveNode):
         self.lidar_dist = float(x.min() - self.front_off) if x.size else float('inf')
         self.lidar_t = time.monotonic()
 
+    def _sonar_callback(self, msg):
+        super()._sonar_callback(msg)
+        r = float(msg.range)
+        near = math.isfinite(r) and not (msg.max_range > 0 and r >= msg.max_range) \
+            and max(0.0, r * self.sonar_scale + self.sonar_offset) < 0.02
+        self.sonar_zero_streak = self.sonar_zero_streak + 1 if near else 0
+
     def _sonar_distance(self, now):
         d = super()._sonar_distance(now)
         if d < 0.02:
-            d = float('inf')                     # 초음파 0.00~0.01 m 는 센서 오류 (실물 로그에서 정상 주행 중 반복)
+            # 초음파 0.00~0.01 m 는 센서 오류로 자주 나온다 (실물 로그에서 정상 주행 중 반복). 한두 번은 무시하고,
+            # sonar_zero_stop_count 번 연속이면 센서에 붙은 사물일 수 있어 그대로(0 m) 둔다 → COLLISION 정지
+            if not (self.sonar_zero_stop > 0 and self.sonar_zero_streak >= self.sonar_zero_stop):
+                d = float('inf')
+            elif self.state != STATE_COLLISION:
+                self.get_logger().warn(f'⚠️ 초음파 0 값이 {self.sonar_zero_streak}번 연속: 앞에 붙은 사물로 보고 정지',
+                                       throttle_duration_sec=2.0)
         if now - self.lidar_t < 0.5:
             d = min(d, max(self.lidar_dist, 0.0))
         return d
