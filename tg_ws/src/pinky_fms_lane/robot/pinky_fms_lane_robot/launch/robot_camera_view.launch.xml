@@ -1,0 +1,33 @@
+<?xml version='1.0' ?>
+<!--
+  키보드 조종 중 차선 인식 화면 녹화용 (로봇에서 실행). 로봇을 움직이지 않는다: cmd_vel 을 내지 않음.
+    ros2 launch pinky_fms_lane_robot robot_camera_view.launch.xml namespace:=amr_01
+  - pinky_autonomous 의 autonomous_drive 대신 camera_view(상속 노드)를 띄운다. 카메라를 독점하므로 둘을 같이 띄우지 않는다.
+  - 초음파(ADC 보드)는 HUD 에 거리를 보여 주려고 함께 띄운다. 이미 따로 떠 있으면 run_adc_sensor:=false.
+  - 영상은 관제 PC 에서 pinky_autonomous video_recorder 로 /<ns>/camera/compressed 를 받아 저장한다.
+  namespace, /tf 리맵은 팀원 robot_autonomous.launch.xml 과 같은 방식이다.
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <arg name="model_path" default="/home/pinky/yolo_drive/best_ncnn_model"/>
+    <arg name="run_adc_sensor" default="true"/>
+    <arg name="enable_lcd" default="true"/>
+
+    <group>
+        <push-ros-namespace namespace="$(var namespace)"/>
+        <set_remap from="/tf" to="tf"/>
+        <set_remap from="/tf_static" to="tf_static"/>
+
+        <!-- pinky_autonomous/autonomous_drive.launch.xml 과 같은 설정 (배터리 토픽이 bringup 과 겹치지 않게 옮김) -->
+        <node pkg="pinky_sensor_adc" exec="main_node" name="pinky_sensor_adc" output="screen" if="$(var run_adc_sensor)">
+            <remap from="batt_state" to="adc/batt_state"/>
+        </node>
+
+        <node pkg="pinky_fms_lane_robot" exec="camera_view" name="camera_view" output="screen"
+              sigterm_timeout="10" sigkill_timeout="15">
+            <param name="model_path" value="$(var model_path)"/>
+            <param name="enable_return_home" value="false"/>
+            <param name="enable_lcd" value="$(var enable_lcd)"/>
+        </node>
+    </group>
+</launch>
