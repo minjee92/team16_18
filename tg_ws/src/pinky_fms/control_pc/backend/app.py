@@ -469,9 +469,11 @@ def network_info():
 
 @app.get('/config')
 def config_info():
-    d = defaults(load())
+    cfg = load()
+    d = defaults(cfg)
     return {'defaults': {'user': d['user'], 'mode': d['mode']}, 'key_installed_on_pc': KEY_PATH.exists(),
-            'stacks': sorted(stacks_of(d))}
+            'stacks': sorted(stacks_of(d)),
+            'lane_route': bool(cfg.get('lane_route', False))}   # true: 차선 목표를 /fleet/lane_goal (관제 경로 계획)으로
 
 
 @app.get('/robots')

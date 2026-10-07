@@ -29,6 +29,10 @@ trap cleanup EXIT INT TERM
 
 setsid ros2 launch rosbridge_server rosbridge_websocket_launch.xml > /tmp/fms_real_rosbridge.log 2>&1 & PIDS+=($!)
 setsid ros2 launch pinky_fms_traffic traffic_core.launch.xml robots_file:=$CFG map_yaml:=$MAP lanes_yaml:=$LANES floor_yaml:=$FLOOR > /tmp/fms_real_core.log 2>&1 & PIDS+=($!)
+# 차선 미션 경로 계획 (pinky_fms_lane 이 빌드돼 있을 때만). robots.yaml 의 lane_route: true 이면 GUI 가 목표를 이 노드로 보낸다
+if ros2 pkg prefix pinky_fms_lane > /dev/null 2>&1; then
+  setsid ros2 launch pinky_fms_lane lane_route.launch.xml map_yaml:=$MAP > /tmp/fms_real_lane_route.log 2>&1 & PIDS+=($!)
+fi
 ( cd $REPO/control_pc/backend && FMS_ROBOTS_FILE=$CFG exec setsid .venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000 > /tmp/fms_real_backend.log 2>&1 ) & PIDS+=($!)
 ( cd $REPO/control_pc/web && exec setsid python3 -m http.server 8080 --bind 127.0.0.1 > /tmp/fms_real_web.log 2>&1 ) & PIDS+=($!)
 

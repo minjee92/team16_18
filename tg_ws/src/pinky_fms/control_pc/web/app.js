@@ -98,6 +98,10 @@ function setupRosTopics() {
     missionPub = new ROSLIB.Topic({ ros, name: '/fleet/mission_request', messageType: 'pinky_fms_interfaces/msg/MissionRequest' });
     globalCmdPub = new ROSLIB.Topic({ ros, name: '/fleet/global_cmd', messageType: 'std_msgs/msg/String' });
     trafficModePub = new ROSLIB.Topic({ ros, name: '/fleet/traffic_mode', messageType: 'std_msgs/msg/String' });
+    laneGoalPub = new ROSLIB.Topic({ ros, name: '/fleet/lane_goal', messageType: 'std_msgs/msg/String' });
+    const laneGoalRes = new ROSLIB.Topic({ ros, name: '/fleet/lane_goal_result', messageType: 'std_msgs/msg/String' });
+    laneGoalRes.subscribe(onLaneGoalResult);
+    topicHandles.push(laneGoalRes);
 
     const sub = (name, type, cb) => { const t = new ROSLIB.Topic({ ros, name, messageType: type }); t.subscribe(cb); topicHandles.push(t); };
 
@@ -664,20 +668,47 @@ function ensureLaneSub(r) {
 }
 
 // 관제 → 차선 노드 명령 (/<ns>/lane_cmd). rosbridge 첫 발행이 유실될 수 있어 노드가 cmd_id 로 확인할 때까지 몇 번 보낸다
+// robots.yaml lane_route: true 이면 목표 명령(go/home)은 /fleet/lane_goal 로 보낸다: 관제 lane_route(pinky_fms_lane)가
+// 코스 모델로 목표를 차선 위에 맞추고 경로·갈림길 동작을 붙여 같은 id 로 lane_cmd 를 보낸다 (거부하면 이유를 lane_goal_result 로).
 const laneCmdTopics = {};
 let laneCmdSeq = Date.now() % 1000000000;
+let laneGoalPub = null;
+const laneGoalResults = {};          // id → lane_route 결과 {ok, reason, goal, note}
+function onLaneGoalResult(m) {
+    let d;
+    try { d = JSON.parse(m.data); } catch (e) { return; }
+    if (laneGoalResults[d.id]) return;
+    laneGoalResults[d.id] = d;
+    const r = Object.values(robots).find(x => x.ns === d.robot);
+    if (!r) return;
+    if (!d.ok) {
+        toast(`${displayName(r.id)}: 목표를 받을 수 없음 — ${d.reason}`, 'err');
+        r.goalPose = null;
+    } else {
+        if (d.goal && r.goalPose) r.goalPose = { ...r.goalPose, x: d.goal[0], y: d.goal[1] };   // 차선 위로 맞춘 목표
+        if (d.note) toast(`${displayName(r.id)}: ${d.note}`, 'info');
+    }
+    updateCard(r); refreshStartAll();
+}
 function sendLaneCmd(r, cmd, extra) {
     if (!ros || !rosOnline) { toast('ROS 에 연결되지 않았습니다', 'err'); return false; }
     const key = `${r.ns}|${rosGeneration}`;
     if (!laneCmdTopics[r.id] || laneCmdTopics[r.id].key !== key) {
         laneCmdTopics[r.id] = { key, topic: new ROSLIB.Topic({ ros, name: `/${r.ns}/lane_cmd`, messageType: 'std_msgs/msg/String' }) };
     }
-    const t = laneCmdTopics[r.id].topic, id = ++laneCmdSeq;
-    const data = JSON.stringify({ id, cmd, ...(extra || {}) });
+    const viaRoute = !!cfgInfo.lane_route && laneGoalPub && (cmd === 'go' || cmd === 'home');
+    const t = viaRoute ? laneGoalPub : laneCmdTopics[r.id].topic, id = ++laneCmdSeq;
+    const data = JSON.stringify(viaRoute ? { robot: r.ns, id, cmd, ...(extra || {}) } : { id, cmd, ...(extra || {}) });
     let n = 0;
     const tick = () => {
         if (r.lane && r.lane.cmd_id === id) return;                 // 수신 확인
-        if (n++ >= 8) { toast(`${displayName(r.id)}: 차선 노드가 명령을 확인하지 않습니다 (로봇에 새 fms_lane_mission 배포 필요?)`, 'err'); return; }
+        if (laneGoalResults[id] && !laneGoalResults[id].ok) return;   // lane_route 가 거부 (이유는 onLaneGoalResult 가 표시)
+        if (n++ >= 8) {
+            toast(`${displayName(r.id)}: 차선 노드가 명령을 확인하지 않습니다 (` + (viaRoute
+                ? '관제 lane_route 가 떠 있는지(/tmp/fms_real_lane_route.log), 로봇에 새 fms_lane_mission 배포 필요?)'
+                : '로봇에 새 fms_lane_mission 배포 필요?)'), 'err');
+            return;
+        }
         if (rosOnline) t.publish(new ROSLIB.Message({ data }));
         setTimeout(tick, 600);
     };

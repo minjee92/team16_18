@@ -12,6 +12,11 @@ network:
   max_participants: 100         # 한 PC 에서 동시에 뜨는 ROS 프로세스 수보다 크게
   extra_peers: []               # (선택) 미리 아는 로봇 IP. 보통 비워도 된다 (로봇이 먼저 관제PC 를 찾아온다)
 
+# 차선 미션 목표를 관제 경로 계획(pinky_fms_lane lane_route)에 맡길지. true 이면 GUI 가 목표를 /fleet/lane_goal 로 보내고,
+# lane_route 가 코스 모델로 목표를 차선 위에 맞춰(멀면 이유와 함께 거부) 경로·갈림길 동작을 붙여 lane_cmd 로 보낸다.
+# false(또는 없음)이면 예전처럼 GUI 가 lane_cmd 를 직접 보내고 로봇이 지도로 갈림길 방향을 고른다.
+lane_route: true
+
 # GUI 에서 추가하는 로봇에 공통으로 쓰는 값. {namespace} 는 로봇 ID 로 자동 치환된다.
 defaults:
   user: pinky                   # SSH 사용자 (GUI 에서 로봇마다 바꿀 수 있음)
