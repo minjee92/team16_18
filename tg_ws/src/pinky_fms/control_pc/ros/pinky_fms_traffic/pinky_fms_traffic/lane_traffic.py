@@ -104,6 +104,8 @@ class LaneTraffic(Node):
         self.declare_parameter('rejoin_timeout', 30.0)
         self.declare_parameter('cooldown', 5.0)         # 같은 두 로봇을 다시 조정하기 전 대기 (s)
         self.declare_parameter('heartbeat_period', 0.2)  # /fleet/lane_heartbeat 주기 (s). 0 이면 보내지 않음
+        self.declare_parameter('escape_wall_margin', 0.03)  # 비켜설 자리의 벽 여유 (몸체 반폭 0.06 에 더함, m). lane_geom 주석 참고
+        self.declare_parameter('escape_path_clear', 0.065)  # 비켜서는 직선 위 벽 여유 (m)
         self.declare_parameter('orphan_warn', 5.0)      # 주인 없는 HOLD 를 경고하기까지 (s)
         gp = lambda n: self.get_parameter(n).value
         self.meet_dist, self.deadlock_dist = gp('meet_dist'), gp('deadlock_dist')
@@ -114,7 +116,8 @@ class LaneTraffic(Node):
         self.geo = None
         if gp('lanes_yaml') and gp('floor_yaml'):
             try:
-                self.geo = LaneGeometry(gp('lanes_yaml'), gp('floor_yaml'))
+                self.geo = LaneGeometry(gp('lanes_yaml'), gp('floor_yaml'), wall_margin=float(gp('escape_wall_margin')),
+                                        pass_clear=float(gp('escape_path_clear')))
             except Exception as e:      # 지도가 없거나 형식이 다르면 조정 없이 상태만 발행
                 self.get_logger().error(f'지도 읽기 실패: {e}')
         if self.geo is None:
