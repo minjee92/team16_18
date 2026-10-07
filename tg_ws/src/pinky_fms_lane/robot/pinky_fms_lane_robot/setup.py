@@ -20,7 +20,8 @@ setup(
     maintainer='minjee92',
     maintainer_email='minjee92@users.noreply.github.com',
     description='FMS lane driving (robot): localization launch (map_server + AMCL, no Nav2 navigation nodes), '
-                'camera view for teleop recording, DDS env helper',
+                'camera view for teleop recording, DDS env helper, cmd_vel safety gate',
     license='Apache-2.0',
-    entry_points={'console_scripts': ['camera_view = pinky_fms_lane_robot.camera_view:main']},
+    entry_points={'console_scripts': ['camera_view = pinky_fms_lane_robot.camera_view:main',
+                                    'cmd_vel_gate = pinky_fms_lane_robot.cmd_vel_gate:main']},
 )

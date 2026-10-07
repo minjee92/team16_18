@@ -285,6 +285,7 @@ ros2 run pinky_fms_lane make_lane_map --map $MAP      # GUI 표시용 차선 지
 | 12 끄기 | GUI / 관제 PC | 미션 취소 → OFF → run_real.sh Ctrl+C | | |
 
 - GUI 에서 고른 지도는 그 로봇 스택(AMCL)에도 쓰인다 (팀원 백엔드 동작). **차선 미션은 `mission4_3_lanes_1cm`, Nav2 미션은 `mission4_3_nolanes_1cm`(= clean 지도)** 를 고른다. `send_initial_pose` 는 항상 clean 지도(`$MAP`)로 확인한다 (벽이 같아서 결과가 같다).
+- (선택) cmd_vel 안전 게이트: 백엔드 `robots.yaml` 의 `stacks.lane` 명령 끝에 `use_gate:=true` 를 붙이면 `fms_lane_mission` 의 속도가 `cmd_vel_gate` 를 거친다. 입력 끊김(0.5 s)·관제 신호 끊김(2 s)·초음파 데이터 없음/끊김/무효값 3번 연속·`cmd_vel` 발행자 겹침이면 0 을 내고, 속도는 0~0.25 m/s, 회전 ±1.5 rad/s 로 자른다. 상태: `ros2 topic echo /amr_0N/cmd_vel_gate/status`. 실물에서 처음 켤 때는 한 대로, 초음파가 들어오는지(`NO_SONAR` 가 없어야 함)부터 본다.
 - 초음파 0 값 정지(`sonar_zero_stop_count` 3)는 센서 앞을 손으로 바짝 막았을 때 0 이 연속으로 나오면 `⚠️ 초음파 0 값이 3번 연속` 로그와 함께 선다. 정상 주행 중 이 로그가 자주 나오면 값을 늘린다.
 
 ---
@@ -314,5 +315,6 @@ cd $FMS_WS/src/pinky_fms_lane/robot/pinky_fms_lane_robot && python3 -m pytest te
 FMS_WS=$FMS_WS $FMS_WS/src/pinky_fms_lane/robot/pinky_fms_lane_robot/tests/run_localization_test.sh      # 도메인 92
 FMS_WS=$FMS_WS $FMS_WS/src/pinky_fms_lane/control_pc/pinky_fms_lane/tests/run_initial_pose_test.sh       # 도메인 95
 FMS_WS=$FMS_WS $FMS_WS/src/pinky_fms_lane/control_pc/pinky_fms_lane/tests/run_record_test.sh             # 도메인 97 (팀원 run_lane_test.sh 가 96)
+FMS_WS=$FMS_WS $FMS_WS/src/pinky_fms_lane/robot/pinky_fms_lane_robot/tests/run_gate_test.sh               # 도메인 88 (cmd_vel 게이트)
 ```
 ROS 격리 시험은 가짜 로봇(`fake_base.py`)을 쓰고 이 PC 안에서만 통신한다. 먼저 `source ~/pinky/install/setup.bash` (pinky_navigation).

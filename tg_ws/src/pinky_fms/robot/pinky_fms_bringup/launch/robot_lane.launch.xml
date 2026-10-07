@@ -25,6 +25,12 @@
     <arg name="fms_link_timeout" default="2.0"/>       <!-- 미션 중 관제 신호(/fleet/lane_heartbeat)가 이 시간(s) 넘게 없으면 정지. 0 = 끔 (터미널 시험용) -->
     <arg name="traffic_cmd_timeout" default="0.0"/>    <!-- 양보 HOLD 에서 명령이 이 시간(s) 없으면 스스로 재개. 0 = 끔(resume·취소로만). 예전 값 10.0 -->
     <arg name="sonar_zero_stop_count" default="3"/>    <!-- 초음파 0 값(0.02 m 미만)이 이만큼 연속이면 정지. 0 = 항상 무시(예전) -->
+    <!-- cmd_vel 안전 게이트 (pinky_fms_lane_robot cmd_vel_gate). 기본 false = 예전처럼 fms_lane_mission 이 cmd_vel 에 직접 낸다.
+         true 면 fms_lane_mission 은 cmd_vel_lane 으로 내고, 게이트가 입력 끊김·관제 신호 끊김·초음파 이상·cmd_vel 겹침이면 0 을 낸다.
+         로봇에 pinky_fms_lane_robot 이 빌드돼 있어야 한다 -->
+    <arg name="use_gate" default="false"/>
+    <arg name="gate_link_timeout" default="2.0"/>
+    <let name="lane_cmd_vel" value="$(eval '\'cmd_vel_lane\' if \'$(var use_gate)\'.lower() == \'true\' else \'cmd_vel\'')"/>
     <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
 
     <!-- 위치추정만 (map_server + AMCL), namespace 보정은 Nav2 와 같은 래퍼를 쓴다 -->
@@ -47,6 +53,7 @@
 
         <node pkg="pinky_fms_bringup" exec="fms_lane_mission.py" name="fms_lane_mission" output="screen"
               sigterm_timeout="10" sigkill_timeout="15">
+            <remap from="cmd_vel" to="$(var lane_cmd_vel)"/>
             <param name="robot_name" value="$(var namespace)"/>
             <param name="goal_x" value="$(var goal_x)"/>
             <param name="goal_y" value="$(var goal_y)"/>
@@ -67,6 +74,11 @@
             <param name="lane_classes" value="['left_lane', 'right_lane']"/>
             <param name="crosswalk_classes" value="['crosswalk']"/>
             <param name="junction_classes" value="['cross_lane']"/>
+        </node>
+        <node pkg="pinky_fms_lane_robot" exec="cmd_vel_gate" name="cmd_vel_gate" output="screen" respawn="true"
+              respawn_delay="0.5" if="$(var use_gate)">
+            <remap from="cmd_vel_in" to="cmd_vel_lane"/>
+            <param name="link_timeout" value="$(var gate_link_timeout)"/>
         </node>
     </group>
 </launch>
