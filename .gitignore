@@ -234,6 +234,10 @@ weights/
 /tg_ws/install/
 /tg_ws/log/
 
+# tg_ws 디버깅 출력 폴더: 폴더(.gitkeep)만 추적하고 내용물(mp4, csv 등)은 제외
+/tg_ws/outputs/*
+!/tg_ws/outputs/.gitkeep
+
 # 임시 산출물
 _verify/
 __pycache__/
