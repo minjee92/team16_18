@@ -1,0 +1,6 @@
+# 차선 모드 위치 추정(AMCL) 덮어쓰기.
+# 여기 없는 값은 팀원 pinky_fms_bringup/params/nav2_params.yaml 의 amcl 값을 그대로 쓴다 (팀원이 다시 맞추면 그대로 따라감).
+amcl:
+  ros__parameters:
+    max_particles: 500   # 원래 2000. RPi5 CPU 를 YOLO(차선 인식)와 나눠 쓰므로 줄인다 (실측 후 조정)
+    min_particles: 200   # 원래 500

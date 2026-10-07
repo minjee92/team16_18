@@ -1,0 +1,34 @@
+<?xml version='1.0' ?>
+<!--
+  차선 모드 위치 추정: map_server + AMCL 만 namespace 로 실행한다. (robot_bringup 이 먼저 실행 중이어야 함: 라이다 scan, odom TF)
+    ros2 launch pinky_fms_lane_robot robot_localization.launch.xml namespace:=amr_01 map:=$HOME/mission4_3_clean_1cm.yaml
+
+  Nav2 주행 노드(controller_server, behavior_server, velocity_smoother ...)는 띄우지 않는다 → cmd_vel 을 내는 노드가 없다.
+  인자와 TF 처리는 팀원 pinky_fms_bringup/robot_nav.launch.xml 과 같다 (/tf→tf 리맵, 가제보는 use_sim_time:=True frame_prefix:=amr_01/).
+  실제 처리는 localization_namespaced.launch.py 에서 한다 (이유는 그 파일 설명 참고).
+
+  AMCL 파라미터: params_file(팀원 nav2_params.yaml)의 amcl 값을 쓰고, overrides_file 로 일부만 덮어쓴다 (빈 값이면 덮어쓰기 없음).
+  scan_topic: AMCL 이 쓸 스캔.
+    scan           원래 스캔 (기본, 팀원 설정과 같음)
+    scan_robotfree 다른 로봇을 지운 스캔. 팀원 robot_scan_filter 를 같이 띄운다.
+                   관제가 other_robots 를 보내야 지우고, 안 보내면 원래 스캔을 그대로 통과시킨다.
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <arg name="map" default=""/>
+    <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
+    <arg name="overrides_file" default="$(find-pkg-share pinky_fms_lane_robot)/params/localization_lane.yaml"/>
+    <arg name="scan_topic" default="scan"/>
+    <arg name="use_sim_time" default="False"/>
+    <arg name="frame_prefix" default=""/>   <!-- 시뮬레이션: TF 프레임 접두어 (예: amr_01/). 실물은 비움 -->
+
+    <include file="$(find-pkg-share pinky_fms_lane_robot)/launch/localization_namespaced.launch.py">
+        <arg name="namespace" value="$(var namespace)"/>
+        <arg name="map" value="$(var map)"/>
+        <arg name="params_file" value="$(var params_file)"/>
+        <arg name="overrides_file" value="$(var overrides_file)"/>
+        <arg name="scan_topic" value="$(var scan_topic)"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="frame_prefix" value="$(var frame_prefix)"/>
+    </include>
+</launch>

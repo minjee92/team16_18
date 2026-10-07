@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>pinky_fms_lane_robot</name>
+  <version>0.0.1</version>
+  <description>차선 주행 관제 (로봇): 위치 추정 launch (map_server + AMCL, Nav2 주행 노드 없음). 기존 pinky_fms·pinky_autonomous 는 수정하지 않음</description>
+  <maintainer email="minjee92@users.noreply.github.com">minjee92</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>pinky_fms_bringup</exec_depend>
+  <exec_depend>pinky_navigation</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+
+  <!-- tests/ 의 격리 시험 (관제 PC 에서 실행) -->
+  <test_depend>rclpy</test_depend>
+  <test_depend>pinky_fms_traffic</test_depend>
+  <test_depend>pinky_fms_lane</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
