@@ -25,9 +25,13 @@ pinky_autonomous 의 AutonomousDriveNode 를 수정하지 않고 상속해서 �
      {"id","cmd":"yield","x","y"}             지금 위치·방향을 복귀 자리로 기억 → 차선 밖 (x,y) 로 비켜섬 → YIELDED 로 정지
      {"id","cmd":"resume","role":"priority"|"yielder"}  HOLD 면 그대로 계속, 비켜선 상태면 복귀 자리·방향으로 돌아가 차선 추종 재개
         (선택 "x","y","yaw": 원래 자리 대신 그 자리·방향으로 복귀. 복귀 중·실패 상태에서도 새 id 로 오면 목표를 바꿔 다시 시작)
-     같은 id 는 무시(관제가 1초마다 keepalive 로 재전송). HOLD·YIELDED 에서 10초 동안 명령이 없으면 resume 으로 간주.
+     같은 id 는 무시(관제가 1초마다 keepalive 로 재전송). HOLD·YIELDED 는 resume·cancel·E-STOP 으로만 풀린다.
+     (traffic_cmd_timeout > 0 이면 예전처럼 그 시간 동안 명령이 없을 때 resume 으로 간주. 기본 0 = 끔)
      비켜서기·복귀 중에는 차선 추종을 멈추고 지도 위치로 직접 움직인다. 라이다 원시값 앞 ±0.08 m 에 앞면 0.06 m 보다
      가까운 점이 있으면 정지, 3초 넘게 막히거나 20초가 지나면 YIELD_FAILED 로 그 자리에 정지.
+  관제 신호 끊김 정지 (fms_link_timeout > 0 일 때, 기본 0 = 끔. robot_lane.launch.xml 은 2.0 으로 켠다):
+     관제 lane_traffic 이 /fleet/lane_heartbeat 를 짧은 주기로 보낸다. 미션 중에 이 시간 넘게 못 받으면 그 자리에 멈추고
+     (차선 추종·양보 이동 모두), 신호가 다시 오면 멈춘 시간만큼 시간 기준을 미루고 이어 간다.
   상태는 lane_status (std_msgs/String JSON) 로 5 Hz 발행 → 로봇 LCD(fms_lcd_status)와 관제가 표시한다.
   LCD 는 이 노드가 직접 쓰지 않는다 (launch 에서 enable_lcd:=false).
 """
@@ -91,6 +95,14 @@ class FmsLaneMission(AutonomousDriveNode):
         self.tr_at = False                     # 목표 위치 도착 (이후 방향만 맞춤)
         self.tr_role_t = 0.0
         self.create_subscription(String, 'lane_traffic_cmd', self._on_traffic_cmd, 10)
+        # 안전 보완 (2026-10-08): 관제 신호 끊김 정지, 양보 명령 시간 초과 시 자동 재개(기본 끔)
+        self.declare_parameter('fms_link_timeout', 0.0)        # s. 0 = 끔. 미션 중 /fleet/lane_heartbeat 를 이 시간 넘게 못 받으면 정지
+        self.declare_parameter('traffic_cmd_timeout', 0.0)     # s. 0 = 끔(resume·cancel 로만 풀림). 예전 동작은 10.0
+        self.link_timeout = float(self.get_parameter('fms_link_timeout').value)
+        self.traffic_cmd_timeout = float(self.get_parameter('traffic_cmd_timeout').value)
+        self.hb_t = None                       # 마지막 관제 신호 수신 시각 (monotonic)
+        self.link_hold_t = None                # 관제 신호가 끊겨 멈춘 시각 (None = 정상)
+        self.create_subscription(String, '/fleet/lane_heartbeat', self._on_heartbeat, 10)
         self.create_timer(0.1, self._traffic_step)
         qos_map = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(OccupancyGrid, self.map_topic, self._on_wall_map, qos_map)
@@ -200,6 +212,36 @@ class FmsLaneMission(AutonomousDriveNode):
         if now - self.lidar_t < 0.5:
             t += f' lidar {self.lidar_dist:.2f}m' if math.isfinite(self.lidar_dist) else ' lidar clear'
         return t
+
+    # ---------- 관제 신호 끊김 정지 ----------
+    def _on_heartbeat(self, m):
+        self.hb_t = time.monotonic()
+
+    def _mission_running(self):
+        return self.goal is not None and self.result is None
+
+    def _link_check(self, now):
+        """관제 신호가 끊겼으면 멈추고 True. 다시 오면 멈춘 시간만큼 시간 기준을 미루고 False."""
+        lost = (self.link_timeout > 0 and self._mission_running()
+                and (self.hb_t is None or now - self.hb_t > self.link_timeout))
+        if lost:
+            if self.link_hold_t is None:
+                self.link_hold_t = now
+                self.get_logger().warn(f'📡 관제 신호(/fleet/lane_heartbeat)가 {self.link_timeout:.1f}초 넘게 없음: 정지 후 대기')
+            self.cmd_pub.publish(Twist())
+            self._apply_lamp(LAMP_STOP)
+            return True
+        if self.link_hold_t is not None:
+            dt = now - self.link_hold_t
+            self.link_hold_t = None
+            for k in ('return_t0', 'advance_t0', 'bias_t0', 'cw_block_t0', 'cw_clear_since', 'leg_t0',
+                      'tr_t0', 'tr_rx', 'tr_role_t', 'tr_blocked_t'):
+                v = getattr(self, k, None)
+                if isinstance(v, float) and v > 0.0:
+                    setattr(self, k, v + dt)
+            self.ramp_t0, self.ramp_n = None, 0        # 멈췄다 출발하므로 천천히 다시 출발
+            self.get_logger().info(f'📡 관제 신호 복구 ({dt:.1f}초 정지): 이어서 진행')
+        return False
 
     def _on_global_cmd(self, m):
         if m.data.strip().upper() != 'E_STOP':
@@ -318,6 +360,8 @@ class FmsLaneMission(AutonomousDriveNode):
         now = time.monotonic()
         if self.traffic is not None:
             return                      # 양보 동작 중: 차선 추종·앞 사물 정지·LOST 처리를 돌리지 않는다 (_traffic_step 이 움직임)
+        if self._link_check(now):
+            return
         if not self._waiting_for_start_pose(now) and self.return_phase not in ('arrived', 'failed'):
             pose = self._current_pose()
             in_junction = self.junction_latched and self.return_phase not in (None, 'following')
@@ -417,8 +461,11 @@ class FmsLaneMission(AutonomousDriveNode):
         if tr is None:
             return
         now = time.monotonic()
-        if tr in ('HOLD', 'YIELDED') and now - self.tr_rx > 10.0:
-            self.get_logger().warn('⏱ 관제 명령이 10초 동안 없음: 주행 재개로 간주합니다')
+        if self._link_check(now):
+            return                                    # 관제 신호 끊김: 양보 이동도 멈춘다
+        if (self.traffic_cmd_timeout > 0 and tr in ('HOLD', 'YIELDED')
+                and now - self.tr_rx > self.traffic_cmd_timeout):
+            self.get_logger().warn(f'⏱ 관제 명령이 {self.traffic_cmd_timeout:.0f}초 동안 없음: 주행 재개로 간주합니다')
             self.traffic_role = None
             self._traffic_resume(now)
             return
@@ -486,7 +533,9 @@ class FmsLaneMission(AutonomousDriveNode):
         pose = self._current_pose() if self.tf_buffer is not None else None
         target = None if self.start_pose is None or self.goal is None else self._target()
         dist = None if pose is None or target is None else math.hypot(pose[0] - target[0], pose[1] - target[1])
-        if self.traffic is not None and self.goal is not None:
+        if self.link_hold_t is not None and self.goal is not None:
+            state, detail = 'WAITING', 'fms link lost'
+        elif self.traffic is not None and self.goal is not None:
             state, detail = {'HOLD': ('WAITING', 'encounter'), 'YIELDING': ('WAITING', 'yielding'),
                              'YIELDED': ('WAITING', 'yielded'), 'REJOINING': ('RESUME DRIVING', 'back to lane'),
                              'YIELD_FAILED': ('WAITING', 'yield failed')}[self.traffic]
@@ -518,7 +567,8 @@ class FmsLaneMission(AutonomousDriveNode):
                'start': [round(v, 2) for v in self.start_pose[:2]] if self.start_pose else None,
                'localized': pose is not None, 'cmd_id': self.cmd_id,
                'pose': None if pose is None else [round(pose[0], 3), round(pose[1], 3), round(pose[2], 3)],
-               'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.traffic_role}
+               'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.traffic_role,
+               'link_ok': self.link_hold_t is None}
         self.status_pub.publish(String(data=json.dumps(msg)))
 
 

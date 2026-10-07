@@ -21,6 +21,9 @@
     <arg name="return_arrive_dist" default="0.30"/>
     <arg name="yolo_conf" default="0.50"/>   <!-- 차선·횡단보도 검출 최소 신뢰도 (갈림길은 junction_conf 0.35). 로봇마다 원본 기본값이 달라 여기서 고정 -->
     <arg name="run_adc_sensor" default="true"/>
+    <!-- 안전 보완 (2026-10-08). 노드 기본값은 예전 동작이고, 이 launch(GUI 미션 경로)에서 켠다 -->
+    <arg name="fms_link_timeout" default="2.0"/>       <!-- 미션 중 관제 신호(/fleet/lane_heartbeat)가 이 시간(s) 넘게 없으면 정지. 0 = 끔 (터미널 시험용) -->
+    <arg name="traffic_cmd_timeout" default="0.0"/>    <!-- 양보 HOLD 에서 명령이 이 시간(s) 없으면 스스로 재개. 0 = 끔(resume·취소로만). 예전 값 10.0 -->
     <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
 
     <!-- 위치추정만 (map_server + AMCL), namespace 보정은 Nav2 와 같은 래퍼를 쓴다 -->
@@ -54,6 +57,8 @@
             <param name="obstacle_dist" value="0.35"/>
             <param name="ultrasonic_stop_dist" value="0.15"/>
             <param name="return_arrive_dist" value="$(var return_arrive_dist)"/>
+            <param name="fms_link_timeout" value="$(var fms_link_timeout)"/>
+            <param name="traffic_cmd_timeout" value="$(var traffic_cmd_timeout)"/>
             <param name="enable_return_home" value="true"/>
             <param name="enable_lcd" value="false"/>
             <param name="map_topic" value="map"/>                     <!-- /<ns>/map (map_server, transient_local) -->

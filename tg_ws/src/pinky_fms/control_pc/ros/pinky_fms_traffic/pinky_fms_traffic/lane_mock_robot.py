@@ -3,7 +3,8 @@
 차선 지도(lanes_yaml)의 차선 띠 가운데를 따라 start → goal 로 한 번 간다 (편도). fms_lane_mission 의
 lane_status / lane_traffic_cmd 인터페이스(2026-10-07 pinky-96 구현)를 흉내 낸다:
   - 앞 사물 정지: 다른 가짜 로봇(peers 의 lane_status pose)이 앞 ±0.10 m 통로 안 stop_dist(앞면 기준) 이내면 정지
-  - hold / yield{x,y} / resume{role}, 같은 id 무시, HOLD·YIELDED 에서 10 s 무명령이면 resume 으로 간주
+  - hold / yield{x,y} / resume{role}, 같은 id 무시. HOLD·YIELDED 는 resume 으로만 풀림
+    (traffic_cmd_timeout > 0 이면 그 시간 무명령일 때 resume 으로 간주. 로봇 fms_lane_mission 과 같은 기본 0 = 끔)
   - 비켜서기·복귀: 방향 오차 0.25 rad 초과면 제자리 회전, 아니면 직진 0.06 m/s, 0.03 m 안이면 도착, 복귀는 yaw ±8°
 'collision' 은 두 로봇 중심이 몸체 폭(0.12 m)보다 가까워진 횟수 (lane_status 에 기록, 시나리오가 확인).
 """
@@ -30,7 +31,8 @@ class LaneMockRobot(Node):
     def __init__(self):
         super().__init__('lane_mock_robot')
         for n, v in (('namespace', 'amr_01'), ('lanes_yaml', ''), ('start', [0.0, 0.0]), ('goal', [0.0, 0.0]),
-                     ('peers', ['']), ('speed', 0.15), ('stop_dist', 0.15), ('start_delay', 3.0)):
+                     ('peers', ['']), ('speed', 0.15), ('stop_dist', 0.15), ('start_delay', 3.0),
+                     ('traffic_cmd_timeout', 0.0)):
             self.declare_parameter(n, v)
         gp = lambda n: self.get_parameter(n).value
         self.ns = gp('namespace')
@@ -43,6 +45,7 @@ class LaneMockRobot(Node):
         d = self.path[min(3, len(self.path) - 1)] - self.path[0]
         self.x, self.y, self.yaw = float(self.path[0, 0]), float(self.path[0, 1]), math.atan2(d[1], d[0])
         self.speed, self.stop_dist = gp('speed'), gp('stop_dist')
+        self.traffic_cmd_timeout = float(gp('traffic_cmd_timeout'))
         self.t_start = time.monotonic() + gp('start_delay')
         self.state, self.detail = 'DRIVING', 'lane → goal'
         self.traffic = self.traffic_id = self.role = None
@@ -150,7 +153,7 @@ class LaneMockRobot(Node):
 
     def _traffic_step(self, now):
         tr = self.traffic
-        if tr in ('HOLD', 'YIELDED') and now - self.rx > 10.0:
+        if self.traffic_cmd_timeout > 0 and tr in ('HOLD', 'YIELDED') and now - self.rx > self.traffic_cmd_timeout:
             self.role = None
             return self._resume(now)
         if tr not in ('YIELDING', 'REJOINING'):

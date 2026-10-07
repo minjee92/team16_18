@@ -8,7 +8,12 @@ fleet_traffic 은 차선 미션 중인 로봇을 관제 대상에서 뺀다(lane
 
 로봇 쪽 실행은 fms_lane_mission(pinky_fms_bringup)이 한다.
   명령 /<ns>/lane_traffic_cmd (String JSON): {"id","cmd":"hold"} | {"id","cmd":"yield","x","y"} | {"id","cmd":"resume","role"}
-    진행 중인 명령은 keepalive 로 1 s 마다 같은 id 로 다시 보낸다 (로봇은 10 s 동안 못 받으면 resume 으로 간주).
+    진행 중인 명령은 keepalive 로 1 s 마다 같은 id 로 다시 보낸다. 로봇은 resume·cancel 로만 HOLD 를 푼다
+    (로봇 traffic_cmd_timeout > 0 이면 그 시간 동안 못 받을 때 resume 으로 간주. 기본 0 = 끔).
+  관제 살아있음 신호: /fleet/lane_heartbeat (String JSON {"seq"}) 를 heartbeat_period 마다 보낸다.
+    로봇(fms_lane_mission fms_link_timeout > 0)은 미션 중 이 신호가 끊기면 그 자리에 멈추고, 다시 오면 이어 간다.
+  주인 없는 HOLD: 로봇이 HOLD·YIELDED 로 서 있는데 이 노드에 그 조정이 없으면(노드 재시작 등) 자동으로 풀지 않고
+    orphan_warn 초마다 경고하고 /fleet/lane_traffic_state 의 orphans 에 올린다 (GUI 에서 미션 취소로 푼다).
   상태 /<ns>/lane_status 의 pose, traffic(HOLD|YIELDING|YIELDED|REJOINING|YIELD_FAILED|null), traffic_id
 GUI/기록용 요약: /fleet/lane_traffic_state (String JSON, 2 Hz). GLOBAL E-STOP(/fleet/global_cmd) 이면 진행 중 조정을 모두 버린다
 (로봇 차선 노드는 E-STOP 을 직접 받아 멈춘다).
@@ -98,11 +103,14 @@ class LaneTraffic(Node):
         self.declare_parameter('pass_timeout', 90.0)    # 우선권 로봇이 이 시간 안에 못 지나가면 그래도 양보 로봇을 재개
         self.declare_parameter('rejoin_timeout', 30.0)
         self.declare_parameter('cooldown', 5.0)         # 같은 두 로봇을 다시 조정하기 전 대기 (s)
+        self.declare_parameter('heartbeat_period', 0.2)  # /fleet/lane_heartbeat 주기 (s). 0 이면 보내지 않음
+        self.declare_parameter('orphan_warn', 5.0)      # 주인 없는 HOLD 를 경고하기까지 (s)
         gp = lambda n: self.get_parameter(n).value
         self.meet_dist, self.deadlock_dist = gp('meet_dist'), gp('deadlock_dist')
         self.escape_max, self.pass_dist = gp('escape_max'), gp('pass_dist')
         self.hold_wait, self.yield_timeout = gp('hold_wait'), gp('yield_timeout')
         self.pass_timeout, self.rejoin_timeout, self.cooldown = gp('pass_timeout'), gp('rejoin_timeout'), gp('cooldown')
+        self.orphan_warn = float(gp('orphan_warn'))
         self.geo = None
         if gp('lanes_yaml') and gp('floor_yaml'):
             try:
@@ -116,6 +124,11 @@ class LaneTraffic(Node):
         self.cool = {}              # frozenset(id 쌍) → 다시 조정할 수 있는 시각
         self.seq = int(time.time() * 1000) % 1_000_000_000
         self.state_pub = self.create_publisher(String, '/fleet/lane_traffic_state', 10)
+        self.hb_seq = 0
+        self.hb_pub = self.create_publisher(String, '/fleet/lane_heartbeat', 10)
+        if float(gp('heartbeat_period')) > 0:
+            self.create_timer(float(gp('heartbeat_period')), self._heartbeat)
+        self.orphans = {}           # 로봇 id → 주인 없는 HOLD 를 처음 본 시각
         self.create_subscription(String, '/fleet/global_cmd', self._on_global_cmd, 10)
         self.create_timer(2.0, self._discover)
         self.create_timer(0.1, self._tick)
@@ -192,6 +205,7 @@ class LaneTraffic(Node):
             if r.cmd is not None and r.cmd['cmd'] == 'resume' and not any(r in (e.a, e.b) for e in self.encounters):
                 if r.acked() or not r.fresh(now, 5.0):
                     r.cmd = None
+        self._check_orphans(now)
         self._pump(now)
 
     def _busy(self, r):
@@ -358,13 +372,30 @@ class LaneTraffic(Node):
         for r in self.robots.values():
             r.cmd = None                # 로봇 차선 노드는 E-STOP 을 직접 받아 미션을 끝낸다
 
+    def _heartbeat(self):
+        self.hb_seq += 1
+        self.hb_pub.publish(String(data=json.dumps({'seq': self.hb_seq})))
+
+    def _check_orphans(self, now):
+        """로봇이 HOLD·YIELDED·YIELD_FAILED 인데 이 노드가 그 조정을 하고 있지 않으면 경고만 한다 (자동으로 풀지 않음)"""
+        for r in self.robots.values():
+            if r.fresh(now) and r.traffic in ('HOLD', 'YIELDED', 'YIELD_FAILED') and not self._busy(r) and r.cmd is None:
+                t0 = self.orphans.setdefault(r.id, now)
+                if now - t0 >= self.orphan_warn:
+                    self.orphans[r.id] = now
+                    self.get_logger().warn(f'{r.id}: {r.traffic} 로 서 있지만 진행 중인 조정이 없음 '
+                                           '(관제 재시작 등) — 자동으로 풀지 않음. GUI 에서 미션을 취소하거나 다시 지정')
+            else:
+                self.orphans.pop(r.id, None)
+
     def _publish_state(self):
         now = time.monotonic()
         robots = {r.id: {'traffic': r.traffic, 'active': r.active(now),
                          'cmd': r.cmd['cmd'] if r.cmd else None, 'acked': r.acked()}
                   for r in self.robots.values()}
         self.state_pub.publish(String(data=json.dumps(
-            {'enabled': self.geo is not None, 'encounters': [e.summary() for e in self.encounters], 'robots': robots})))
+            {'enabled': self.geo is not None, 'encounters': [e.summary() for e in self.encounters], 'robots': robots,
+             'orphans': sorted(self.orphans)})))
 
 
 def main():
