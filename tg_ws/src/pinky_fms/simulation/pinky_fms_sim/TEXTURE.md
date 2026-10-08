@@ -10,7 +10,7 @@ PGM 전체는 280×230px, resolution=0.01m/px, origin=(-0.567,-1.056,0)이다.
 경기장 사각형은 이미지 좌표 x=44.5~275.5, y=9.5~130.5 부근이다.
 따라서 PNG 전체를 2.8×2.3m에 늘려 놓으면 맞지 않는다.
 
-승인 PNG는 1711×919px이며 `worlds/textures/course_gray_white_lanes.png`에 보존했다.
+승인 PNG는 1711×919px이며 `worlds/mission4_3_textured_assets/course.png` 에 있다 (Gazebo 가 읽는 파일이자 도구 입력. 예전 `worlds/textures/course_gray_white_lanes.png` 는 같은 파일이라 지움).
 `config/course_texture.json`에는 PNG checksum과 실제 픽셀에서 측정한 외곽,
 T자 벽, 장애물 위치가 있다. 생성 이미지가 구간별로 조금씩 변형되어 있어
 하나의 affine 변환 대신 **단조 증가하는 x/y 구간별 mesh**로 대응시킨다.
@@ -31,7 +31,7 @@ SDF 옆의 `_assets` 폴더에 PNG 복사본, COLLADA mesh, 정합 정보가 생
 cd <workspace>/src/pinky_fms/simulation/pinky_fms_sim
 python3 tools/add_ground_texture.py \
   worlds/mission4_3_clean_1cm.sdf ../../maps/mission4_3_clean_1cm.yaml \
-  worlds/textures/course_gray_white_lanes.png config/course_texture.json \
+  worlds/mission4_3_textured_assets/course.png config/course_texture.json \
   /tmp/course-generated/mission4_3_textured.sdf
 python3 -m unittest discover -s tests -v
 ```
