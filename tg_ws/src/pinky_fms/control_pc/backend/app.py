@@ -253,6 +253,16 @@ _locks = {}
 _locks_guard = threading.Lock()
 
 
+_op_locks = {}
+
+
+def _op_lock(rid):
+    """로봇별 동작 잠금 (ON·OFF·스택 전환). GUI 가 여러 탭에서 같은 요청을 동시에 보내면 스택을 두 번 띄우거나,
+    한쪽의 '남은 노드 정리'가 다른 쪽이 방금 띄운 차선 노드를 죽인다 (2026-10-09 실물: 두 로봇 차선 노드 exit -9)"""
+    with _locks_guard:
+        return _op_locks.setdefault(rid, threading.RLock())
+
+
 def _lock(rid):
     with _locks_guard:
         return _locks.setdefault(rid, threading.Lock())
@@ -426,7 +436,7 @@ def proc_state(run, rid, r):
     return 'bringup' in names, [n for n in names if n != 'bringup']
 
 
-STACK_NODES = {'lane': ('fms_lane_mission.py',), 'nav': ('fms_escape.py',)}   # 정리 안 되고 남으면 안 되는 스택 노드
+STACK_NODES = {'lane': ('fms_lane_mission.py',), 'nav': ('fms_escape.py', 'fms_camera_stream.py')}   # 정리 안 되고 남으면 안 되는 스택 노드
 
 
 def orphan_sweep(rid, s):
@@ -621,15 +631,17 @@ def turn_on(rid: str, body: OnBody):
     r = {**r, 'ip': ip, 'user': user}
     if not r['preset']:
         _update('added.json', lambda d: d.__setitem__(rid, {'ip': ip, 'user': user}))
-    return start_robot(cfg, rid, r, run, ip)
+    with _op_lock(rid):
+        return start_robot(cfg, rid, r, run, ip)
 
 
 @app.post('/robots/{rid}/off')
 def turn_off(rid: str):
     _, r = get_robot(rid)
     run = connect(rid, r)          # 401 이면 GUI 가 비밀번호를 다시 받아 재접속한다
-    for s in proc_state(run, rid, r)[1]:      # 주행 스택(Nav2·차선 추종)을 먼저 끈다
-        stop_stack(run, rid, s, r)
+    with _op_lock(rid):
+        for s in proc_state(run, rid, r)[1]:      # 주행 스택(Nav2·차선 추종)을 먼저 끈다
+            stop_stack(run, rid, s, r)
     pid, _ = paths(rid)
     # ros2 launch 가 정리할 수 있도록 SIGINT 를 프로세스 그룹에 보낸다
     run.run(f'test -f {pid} && kill -INT -$(cat {pid}) 2>/dev/null; sleep 3; '
@@ -678,24 +690,25 @@ def set_stack(rid: str, body: StackBody):
     launched = _read('launched.json', {})
     ip = launched.get(rid) or r.get('ip') or '127.0.0.1'
     run = connect(rid, r)
-    bringup, running = proc_state(run, rid, r)
-    if want and not bringup:
-        raise HTTPException(409, '로봇이 꺼져 있습니다. 먼저 ON 하세요')
-    map_path = push_map(run, body.map) if want and body.map else None
-    restart = bool(body.args) and want in running    # 미션 인자(목적지)가 바뀌면 새로 띄운다
-    if want in running and not restart:
-        # 백엔드가 띄운 스택이 다른 지도(명령)로 떠 있으면 새로 띄운다. 손으로 띄운 것(.cmd 없음)은 그대로 둔다
-        sp, _ = stack_paths(rid, want)
-        _, cur, _ = run.run(f'cat {sp}.cmd 2>/dev/null')
-        restart = bool(cur.strip()) and cur.strip() != stack_command(r, rid, want, body.args, map_path)
-    for s in running:
-        if s != want or restart:
-            stop_stack(run, rid, s, r)
-    note, started = ('이미 실행 중' if want in running and not restart else ''), False
-    if want and (want not in running or restart):
-        start_stack(cfg, rid, r, run, ip, want, body.args, map_path)
-        note, started = '시작 요청 완료', True
-    return {'id': rid, 'stack': want or None, 'note': note, 'started': started, 'map': map_path}
+    with _op_lock(rid):          # 같은 로봇의 스택 요청은 한 번에 하나씩 (여러 GUI 탭 대비)
+        bringup, running = proc_state(run, rid, r)
+        if want and not bringup:
+            raise HTTPException(409, '로봇이 꺼져 있습니다. 먼저 ON 하세요')
+        map_path = push_map(run, body.map) if want and body.map else None
+        restart = bool(body.args) and want in running    # 미션 인자(목적지)가 바뀌면 새로 띄운다
+        if want in running and not restart:
+            # 백엔드가 띄운 스택이 다른 지도(명령)로 떠 있으면 새로 띄운다. 손으로 띄운 것(.cmd 없음)은 그대로 둔다
+            sp, _ = stack_paths(rid, want)
+            _, cur, _ = run.run(f'cat {sp}.cmd 2>/dev/null')
+            restart = bool(cur.strip()) and cur.strip() != stack_command(r, rid, want, body.args, map_path)
+        for s in running:
+            if s != want or restart:
+                stop_stack(run, rid, s, r)
+        note, started = ('이미 실행 중' if want in running and not restart else ''), False
+        if want and (want not in running or restart):
+            start_stack(cfg, rid, r, run, ip, want, body.args, map_path)
+            note, started = '시작 요청 완료', True
+        return {'id': rid, 'stack': want or None, 'note': note, 'started': started, 'map': map_path}
 
 
 def push_map(run, name):
