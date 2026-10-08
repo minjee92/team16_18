@@ -1,0 +1,4 @@
+# Install CPU torch/torchvision first, then these packages in a venv with
+# --system-site-packages so the ROS Jazzy Python packages remain available.
+ultralytics==8.4.164
+ncnn==1.0.20260526
