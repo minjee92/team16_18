@@ -252,6 +252,17 @@ class FmsLaneMission(AutonomousDriveNode):
             return None
         if self.junction_latched and self.return_phase not in (None, 'following'):
             return None
+        # 재탐색은 오래 하지 않는다: 위치 오차가 크면 지도상 차선 띠로 가도 카메라에 차선이 안 보이고 벽 쪽을 헤맨다 (10/9 실물 1분 넘게 배회)
+        if now - self.__dict__.get('rq_seen_t', 0.0) > 1.0:
+            self.rq_start = now                  # 차선을 다시 본 뒤 새로 놓친 경우에만 15초를 다시 센다
+        self.rq_seen_t = now
+        if now - self.rq_start > 15.0:
+            if now - self.__dict__.get('_rq_giveup_note', 0.0) > 10.0:
+                self._rq_giveup_note = now
+                self.get_logger().warn('⚠️ 차선 재탐색 15초 실패: 정지 (관제에 lane lost 로 보고, 로봇을 차선 위에 놓고 Init Pose)')
+            return 0.0, 0.0, True
+        if now - self.lidar_t < 0.5 and self.lidar_dist < 0.10:
+            return 0.0, 0.0, True                # 지도에 없는 물체(다른 로봇 등)가 앞 0.10 m 안: 재탐색 이동 보류
         pose = self._current_pose()
         if pose is None:
             return None
@@ -461,8 +472,9 @@ class FmsLaneMission(AutonomousDriveNode):
 
     def _sonar_distance(self, now):
         d = super()._sonar_distance(now)
-        if d < 0.02:
-            d = float('inf')                     # 초음파 0.00~0.01 m 는 센서 오류 (실물 로그에서 정상 주행 중 반복)
+        lidar_ok = now - self.lidar_t < 0.5
+        if d < 0.02 or (d < 0.05 and lidar_ok and self.lidar_dist > 0.10):
+            d = float('inf')                     # 초음파 0.00~0.04 m 는 센서 오류가 잦다: 라이다가 앞 0.10 m 안을 비어 있다고 보면 무시 (10/9 실물 0.00/0.02/0.03 m 오정지)
         elif math.isfinite(d):
             exp = self._wall_ahead(radians=(-0.26, -0.13, 0.0, 0.13, 0.26))    # 초음파 빔(약 ±15°) 안의 지도 벽
             if exp is not None and d >= exp - self.front_off - 0.06:
