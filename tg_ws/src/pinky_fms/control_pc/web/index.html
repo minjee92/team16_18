@@ -174,22 +174,21 @@
 
     <!-- 🟢 [모달 2] 라이브 카메라 팝업 -->
     <div id="cam-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
-        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[800px] overflow-hidden transform scale-95 transition-transform duration-300" id="cam-modal-content">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[800px] max-w-[95vw] overflow-hidden transform scale-95 transition-transform duration-300" id="cam-modal-content">
             <div class="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-850">
                 <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-video text-rose-500 mr-2 animate-pulse"></i>Live FPV Stream: <span id="cam-robot-name">AMR-01</span></h2>
                 <button onclick="closeCamModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
             <div class="p-1 bg-black relative h-[450px] flex items-center justify-center">
                 <div class="absolute top-4 left-4 flex flex-col gap-1 z-10">
-                    <span class="bg-black/60 text-emerald-400 text-[10px] font-mono px-2 py-0.5 rounded">FPS: 30.0</span>
+                    <span id="cam-fps" class="bg-black/60 text-emerald-400 text-[10px] font-mono px-2 py-0.5 rounded">FPS: --</span>
                 </div>
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
-                    <div class="w-px h-full bg-cyan-500"></div><div class="h-px w-full bg-cyan-500 absolute"></div>
-                    <div class="w-12 h-12 border-2 border-cyan-500 rounded-full absolute"></div>
-                </div>
-                <i class="fa-solid fa-warehouse text-[8rem] text-slate-800"></i>
-                <p class="absolute bottom-4 text-slate-600 text-xs font-mono tracking-widest">Waiting for ImageTransport...</p>
+                <img id="cam-img" alt="로봇 카메라 영상" class="hidden max-h-full max-w-full object-contain" style="image-rendering:auto">
+                <i id="cam-placeholder" class="fa-solid fa-video-slash text-[6rem] text-slate-800"></i>
+                <p id="cam-status" class="absolute bottom-4 px-4 text-center text-slate-500 text-xs">영상 연결 중…</p>
             </div>
+        </div>
+    </div>
         </div>
     </div>
 

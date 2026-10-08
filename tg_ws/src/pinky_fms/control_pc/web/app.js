@@ -195,7 +195,7 @@ function renderFleet() {
                     <button onclick="returnDock('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-emerald-400 px-2 py-1 rounded text-[10px] transition" title="도크(마지막 Init Pose 위치)로 복귀"><i class="fa-solid fa-house mr-1"></i>Dock</button>
                     <button onclick="openLogModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-amber-400 px-2 py-1 rounded text-[10px] transition"><i class="fa-solid fa-terminal mr-1"></i>Log</button>
                     <button onclick="openDiagModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition"><i class="fa-solid fa-network-wired mr-1"></i>Diag</button>
-                    <button onclick="openCamModal('${n}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition" title="카메라 (미구현)"><i class="fa-solid fa-video"></i></button>
+                    <button onclick="openCamModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition" title="실시간 주행 영상 (Lane Following 중)"><i class="fa-solid fa-video"></i></button>
                     <button id="${r.id}-btn-del" onclick="deleteRobot('${r.id}')" class="hidden bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-500 hover:text-rose-400 px-2 py-1 rounded text-[10px] transition" title="로봇 삭제 (OFF 상태에서만)"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>
@@ -916,8 +916,39 @@ window.clearRosLog = function () { if (robots[logRobotId]) { robots[logRobotId].
 // ==========================================
 // 8. 카메라 모달 (미구현 - 자리만 유지)
 // ==========================================
-window.openCamModal = function (name) { document.getElementById('cam-robot-name').innerText = name; openModal('cam-modal', 'cam-modal-content'); };
-window.closeCamModal = function () { closeModal('cam-modal', 'cam-modal-content'); };
+// ---- 실시간 주행 영상: 차선 노드의 기록용 영상(/<ns>/camera/rec, JPEG 320×240, 5 Hz)을 rosbridge 로 받아 보여 준다 ----
+let camTopic = null, camTimer = null;
+window.openCamModal = function (id) {
+    const r = robots[id];
+    document.getElementById('cam-robot-name').innerText = r ? displayName(id) : id;
+    const img = document.getElementById('cam-img'), ph = document.getElementById('cam-placeholder');
+    const status = document.getElementById('cam-status'), fpsEl = document.getElementById('cam-fps');
+    img.classList.add('hidden'); ph.classList.remove('hidden'); fpsEl.textContent = 'FPS: --';
+    status.textContent = '영상 연결 중…';
+    openModal('cam-modal', 'cam-modal-content');
+    stopCam();
+    if (!ros || !rosOnline || !r) { status.textContent = 'ROS 에 연결되지 않았습니다'; return; }
+    camTopic = new ROSLIB.Topic({ ros, name: `/${r.ns}/camera/rec`, messageType: 'sensor_msgs/msg/CompressedImage', throttle_rate: 150, queue_length: 1 });
+    const times = []; let last = 0;
+    camTopic.subscribe((m) => {
+        last = Date.now(); times.push(last); while (times.length > 10) times.shift();
+        img.src = 'data:image/jpeg;base64,' + m.data;
+        img.classList.remove('hidden'); ph.classList.add('hidden'); status.textContent = '';
+        if (times.length > 1) fpsEl.textContent = `FPS: ${((times.length - 1) * 1000 / (times[times.length - 1] - times[0])).toFixed(1)}`;
+    });
+    camTimer = setInterval(() => {                   // 영상이 끊기거나 처음부터 안 오면 이유를 보여 준다
+        if (Date.now() - last < 3000) return;
+        img.classList.add('hidden'); ph.classList.remove('hidden'); fpsEl.textContent = 'FPS: --';
+        status.textContent = r.stack === 'lane'
+            ? '영상이 오지 않습니다 — 차선 노드가 준비 중이거나 카메라 오류일 수 있습니다 (Log 확인)'
+            : '영상은 Lane Following(차선 주행) 스택이 켜져 있을 때만 나옵니다. Nav2 미션에는 카메라 노드가 없습니다';
+    }, 1000);
+};
+function stopCam() {
+    if (camTopic) { try { camTopic.unsubscribe(); } catch (e) { /* 무시 */ } camTopic = null; }
+    if (camTimer) { clearInterval(camTimer); camTimer = null; }
+}
+window.closeCamModal = function () { stopCam(); closeModal('cam-modal', 'cam-modal-content'); };
 
 // ==========================================
 // 9. 통신 진단 모달: 실제 heartbeat(마지막 수신 후 경과 시간)
