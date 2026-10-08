@@ -195,6 +195,17 @@ class FmsLaneMission(AutonomousDriveNode):
         px, py = -dy / n * half, dx / n * half
         return all(self._wall_between((a[0] + k * px, a[1] + k * py), (b[0] + k * px, b[1] + k * py)) for k in (0, -1, 1))
 
+    def _reached(self, key, pose, target, radius):
+        """도착: 반경 안이거나, 반경의 2배 안까지 다가왔다가 멀어지기 시작함(가장 가까운 점을 지남).
+        차선은 목표점을 정확히 지나지 않을 수 있어(띠 폭·위치 오차) 지나친 뒤 계속 가 버리는 것을 막는다"""
+        if self._wall_between(pose, target):
+            return False
+        d = math.hypot(pose[0] - target[0], pose[1] - target[1])
+        best = self.__dict__.setdefault('_closest', {}).get(key)
+        if best is None or d < best:
+            self._closest[key] = best = d
+        return d <= radius or (best <= 2 * radius and d > best + 0.03)
+
     def _arrived_at(self, pose, target, radius):
         return math.hypot(pose[0] - target[0], pose[1] - target[1]) <= radius and not self._wall_between(pose, target)   # 도착은 보수적으로 (직선 하나라도 벽이면 아님)
 
@@ -493,6 +504,7 @@ class FmsLaneMission(AutonomousDriveNode):
         self.departing = False
         self.jn_choice, self.post_turn_bias, self.in_corner = None, None, False
         self.jn_adv_done = False
+        self._closest = {}
         self._traffic_clear()
 
     # ---------- 출발 위치: 목적지를 받은 뒤의 AMCL(map) 위치 ----------
@@ -600,14 +612,14 @@ class FmsLaneMission(AutonomousDriveNode):
             pose = self._current_pose()
             in_junction = self.junction_latched and self.return_phase not in (None, 'following')
             if pose is not None and not in_junction:
-                if self.leg == 'outbound' and self._arrived_at(pose, self.goal, self.goal_dist):
+                if self.leg == 'outbound' and self._reached('goal', pose, self.goal, self.goal_dist):
                     if self.one_way:
                         self.junction_latched, self.return_phase, self.result = True, 'arrived', 'ARRIVED'
                         self.get_logger().info('🏁 목적지 도착 (편도): 정지')
                     else:
                         self._reach_goal(now)
                 elif (self.leg == 'inbound' and now - self.leg_t0 > 5.0
-                      and self._arrived_at(pose, self.start_pose, self.arrive_dist)):
+                      and self._reached('start', pose, self.start_pose, self.arrive_dist)):
                     self.junction_latched, self.return_phase = True, 'arrived'
                     self.result = 'ARRIVED'
                     self.get_logger().info('🏠 출발점 도착: Lane Following 미션 완료')

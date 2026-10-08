@@ -15,10 +15,10 @@
     <arg name="map" default=""/>
     <arg name="goal_x" default="nan"/>
     <arg name="goal_y" default="nan"/>
-    <arg name="goal_arrive_dist" default="0.30"/>
+    <arg name="goal_arrive_dist" default="0.15"/>   <!-- 목적지 도착 반경. 0.30 은 코너 앞 27 cm 에서 멈췄음 (10/8). 가장 가까운 점을 지나면 도착 처리 -->
     <arg name="model_path" default="/home/pinky/yolo_drive/best_ncnn_model"/>
     <arg name="drive_speed" default="0.15"/>   <!-- 차선 추종 기준 속도 (m/s). 횡단보도·장애물 감속(×0.5)과 코너 감속도 이 값을 기준으로 한다 -->
-    <arg name="return_arrive_dist" default="0.30"/>
+    <arg name="return_arrive_dist" default="0.15"/>
     <arg name="yolo_conf" default="0.50"/>   <!-- 차선·횡단보도 검출 최소 신뢰도 (갈림길은 junction_conf 0.35). 로봇마다 원본 기본값이 달라 여기서 고정 -->
     <arg name="run_adc_sensor" default="true"/>
     <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
