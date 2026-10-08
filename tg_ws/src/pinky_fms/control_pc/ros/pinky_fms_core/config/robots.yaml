@@ -17,6 +17,8 @@ defaults:
   user: pinky                   # SSH 사용자 (GUI 에서 로봇마다 바꿀 수 있음)
   mode: ssh                     # ssh: 실제 로봇에 SSH 로 접속 / local: 이 PC 에서 가짜 로봇 실행(테스트)
   ws_setup: source /opt/ros/jazzy/setup.bash && source ~/pinky_pro/install/setup.bash   # 로봇의 colcon 워크스페이스
+  ws_dir: ~/pinky_pro          # 로봇 colcon 작업공간 (FMS 패키지 자동 배포 위치: <ws_dir>/src/pinky_fms/pinky_fms_bringup)
+  auto_deploy: true            # ON 할 때 로봇의 pinky_fms_bringup 이 관제PC 것과 다르면 자동으로 복사·빌드 (끄려면 false)
   launch_cmd: ros2 launch pinky_fms_bringup robot_bringup.launch.xml namespace:={namespace}
   # 주행 스택: 미션 종류에 따라 bringup 위에 하나만 띄운다 (둘 다 cmd_vel 을 쓰므로 동시에 띄우지 않는다).
   # GUI 에서 미션을 실행하면 백엔드가 SSH 로 켜고 끈다. {namespace} = 로봇 ID, {map} = robot_map, {lane_map} = lane_map

@@ -315,10 +315,69 @@ def is_running(run, rid):
     return code == 0
 
 
+# ---------------- 로봇 FMS 패키지 자동 배포: ON 할 때 관제PC 의 robot/pinky_fms_bringup 과 다르면 복사·빌드 ----------------
+FMS_PKG_SRC = Path(__file__).resolve().parents[1].parent / 'robot' / 'pinky_fms_bringup'
+FMS_PKG_PARTS = ('CMakeLists.txt', 'package.xml', 'launch', 'params', 'scripts')
+
+
+def _fms_pkg_files():
+    out = {}
+    for part in FMS_PKG_PARTS:
+        p = FMS_PKG_SRC / part
+        for f in ([p] if p.is_file() else sorted(p.rglob('*'))):
+            if f.is_file() and '__pycache__' not in f.parts and not f.name.endswith('.pyc'):
+                out[str(f.relative_to(FMS_PKG_SRC))] = f.read_bytes()
+    return out
+
+
+def auto_deploy(r, run):
+    """robots.yaml 의 auto_deploy(기본 켜짐): 로봇의 pinky_fms_bringup 이 관제PC 것과 다르면 SFTP 로 복사하고 빌드한다.
+    같은 내용(해시)이면 아무것도 하지 않는다. 반환: 안내 문구('' = 이미 최신)"""
+    if isinstance(run, LocalRunner) or not r.get('auto_deploy', True) or not FMS_PKG_SRC.is_dir():
+        return ''
+    files = _fms_pkg_files()
+    h = hashlib.sha256()
+    for k in sorted(files):
+        h.update(k.encode()); h.update(b'\0'); h.update(files[k]); h.update(b'\0')
+    want = h.hexdigest()[:16]
+    ws = r.get('ws_dir', '~/pinky_pro')
+    _, home, _ = run.run('echo $HOME')
+    ws = ws.replace('~', home.strip(), 1)
+    dst = f'{ws}/src/pinky_fms/pinky_fms_bringup'
+    marker = f'{dst}/.fms_deploy_hash'
+    _, cur, _ = run.run(f'cat {shlex.quote(marker)} 2>/dev/null; test -d {shlex.quote(ws)}/install/pinky_fms_bringup && echo INSTALLED')
+    if want in cur and 'INSTALLED' in cur:
+        return ''
+    code, _, _ = run.run(f'test -d {shlex.quote(ws)}/src')
+    if code != 0:
+        raise HTTPException(500, f'로봇에 colcon 작업공간({ws}/src)이 없어 FMS 패키지를 자동 배포할 수 없습니다')
+    t0 = time.monotonic()
+    dirs = sorted({str(Path(k).parent) for k in files if '/' in k})
+    run.run(f"pkill -KILL -f '[f]ms_lane_mission.py'; pkill -KILL -f '[r]os2cli.daemon.daemonize'; "
+            + ' '.join(f'mkdir -p {shlex.quote(dst + "/" + d)};' for d in [''] + dirs) + ' true')
+    try:
+        sftp = run.c.open_sftp()
+        try:
+            for k, data in files.items():
+                sftp.putfo(io.BytesIO(data), f'{dst}/{k}')
+        finally:
+            sftp.close()
+    except (paramiko.SSHException, OSError) as e:
+        raise HTTPException(502, f'로봇에 FMS 패키지 복사 실패: {type(e).__name__}')
+    code, out, err = run.run(f"chmod +x {shlex.quote(dst)}/scripts/*.py; cd {shlex.quote(ws)} && source /opt/ros/jazzy/setup.bash && "
+                             f"colcon build --packages-select pinky_fms_bringup 2>&1 | tail -3", timeout=300)
+    if code != 0 or 'Summary: 1 package finished' not in out:
+        raise HTTPException(500, f'로봇에서 FMS 패키지 빌드 실패: {(out + err).strip()[-300:]}')
+    run.run(f'echo {want} > {shlex.quote(marker)}')
+    return f'FMS 패키지 자동 배포 완료 ({len(files)}개 파일, {time.monotonic() - t0:.0f} s)'
+
+
 def start_robot(cfg, rid, r, run, ip):
     """로봇에서 launch 를 시작하고(이미 실행 중이면 그대로), 접속 정보 기억과 ping 추적을 시작한다."""
     note = '이미 실행 중'
+    deployed = ''
     if not is_running(run, rid):
+        deployed = auto_deploy(r, run)          # bringup 을 띄우기 전에 로봇 패키지를 최신으로
         pid, log = paths(rid)
         launch = r['launch_cmd'].format(namespace=rid)
         dds_export, net = dds_setup(cfg, rid, r, run, ip)
@@ -327,7 +386,7 @@ def start_robot(cfg, rid, r, run, ip):
         inner = (f"{r['ws_setup']} && unset ROS_LOCALHOST_ONLY && export ROS_DOMAIN_ID={cfg['domain_id']} "
                  f'RMW_IMPLEMENTATION={netconf.RMW} && {dds_export}exec {launch}')
         run.run(f'setsid bash -c {shlex.quote(inner)} > {log} 2>&1 < /dev/null & echo $! > {pid}')
-        note = '시작 요청 완료' + (' (DDS 유니캐스트)' if net['discovery'] == 'unicast' else '')
+        note = '시작 요청 완료' + (' (DDS 유니캐스트)' if net['discovery'] == 'unicast' else '') + (f' · {deployed}' if deployed else '')
     _update('launched.json', lambda d: d.__setitem__(rid, ip))
     _update('last_conn.json', lambda d: d.__setitem__(rid, {'ip': ip, 'user': r.get('user')}))
     start_monitor(rid, ip)
