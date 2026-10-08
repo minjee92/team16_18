@@ -34,6 +34,9 @@
         .cam-body .fps { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.6); color: var(--ok); font: 10px monospace; padding: 2px 6px; border-radius: 4px; }
         .live { position: absolute; top: 6px; right: 6px; display: none; align-items: center; gap: 5px; background: #dc2626; color: #fff; font: 700 10px Inter, sans-serif; letter-spacing: .08em; padding: 2px 7px; border-radius: 4px; }
         .live.on { display: inline-flex; }
+        .dist { position: absolute; bottom: 8px; right: 8px;   /* 왼쪽 아래는 차선 영상의 좌표 글자 자리 */ display: none; background: rgba(0,0,0,.7); color: #fff; font: 600 13px Inter, sans-serif; padding: 4px 10px; border-radius: 6px; border-left: 3px solid var(--c); }
+        .dist.on { display: block; }
+        .dist small { color: #94a3b8; font-weight: 400; font-size: 10px; margin-left: 4px; }
         .live i { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: blink 1s steps(2, start) infinite; }
         @keyframes blink { to { visibility: hidden; } }
         @media (max-width: 760px) { main { grid-template-columns: 1fr; grid-template-rows: 50vh auto; } }

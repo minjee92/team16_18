@@ -153,14 +153,25 @@ function buildCams() {
         const el = document.createElement('div');
         el.className = 'cam'; el.style.setProperty('--c', r.color);
         el.innerHTML = `<div class="cam-head"><b>${displayName(r.id)}</b><span class="muted">로봇 시점</span><span class="st">--</span></div>
-            <div class="cam-body"><img alt="${displayName(r.id)} 주행 영상"><span class="fps">FPS: --</span><span class="live" title="실시간 영상 수신 중"><i></i>LIVE</span><span class="msg">영상 연결 중…</span></div>`;
+            <div class="cam-body"><img alt="${displayName(r.id)} 주행 영상"><span class="fps">FPS: --</span><span class="live" title="실시간 영상 수신 중"><i></i>LIVE</span><span class="dist"></span><span class="msg">영상 연결 중…</span></div>`;
         el.onclick = () => { selected = r.id; markSelected(); draw(); };
         box.appendChild(el);
-        r.cam = { el, img: el.querySelector('img'), msg: el.querySelector('.msg'), fps: el.querySelector('.fps'), live: el.querySelector('.live'), st: el.querySelector('.st'), times: [], last: 0 };
+        r.cam = { el, img: el.querySelector('img'), msg: el.querySelector('.msg'), fps: el.querySelector('.fps'), live: el.querySelector('.live'), dist: el.querySelector('.dist'), st: el.querySelector('.st'), times: [], last: 0 };
     });
     markSelected();
 }
 function markSelected() { Object.values(robots).forEach(r => r.cam && r.cam.el.classList.toggle('sel', r.id === selected)); }
+
+// 목표까지 남은 거리: 차선 주행은 lane_status.dist(현재 목표까지 직선 거리), Nav2 미션은 mission_state 의 남은 경로 길이
+function distInfo(r) {
+    const now = Date.now(), ln = r.lane && now - r.lane.t < 3000 ? r.lane : null;
+    if (ln && ln.dist !== null && ln.dist !== undefined && ['DRIVING', 'RETURNING', 'WAITING', 'PAUSED'].includes(ln.state))
+        return { label: ln.leg === 'outbound' ? '목표까지' : '출발점까지', m: ln.dist, prec: 1, note: '직선 거리' };
+    const t = r.task;
+    if (t && t.state === 'RUNNING' && t.distance_remaining > 0 && now - t.at < 60000)   // 대기·양보 중에는 피드백이 멈춰도 마지막 값 유지
+        return { label: '목표까지', m: t.distance_remaining, prec: 2, note: 'Nav2 남은 경로' };
+    return null;
+}
 
 function stateText(r) {
     if (r.lane && Date.now() - r.lane.t < 3000) return `LANE ${r.lane.state}${r.lane.detail ? ' · ' + r.lane.detail : ''}`;
@@ -172,6 +183,9 @@ setInterval(() => {      // 영상이 안 오면 이유를 보여 준다
     Object.values(robots).forEach(r => {
         if (!r.cam) return;
         r.cam.st.textContent = stateText(r);
+        const d = distInfo(r);
+        r.cam.dist.classList.toggle('on', !!d);
+        if (d) r.cam.dist.innerHTML = `${d.label} <b>${d.m.toFixed(d.prec)} m</b><small>${d.note}</small>`;
         if (Date.now() - r.cam.last < 3000) return;
         r.cam.live.classList.remove('on');
         r.cam.img.style.display = 'none'; r.cam.fps.textContent = 'FPS: --';
@@ -193,6 +207,10 @@ function subscribe() {
         r.status = m; r.statusAt = Date.now();
         if (m.localized && m.state !== 'OFFLINE' && !(r.lane && Date.now() - r.lane.t < 3000)) addTrail(r, m.x, m.y);
         draw();
+    });
+    sub('/fleet/mission_state', 'pinky_fms_interfaces/msg/TaskState', (m) => {
+        const r = robots[m.robot_id];
+        if (r) r.task = { state: m.state, distance_remaining: m.distance_remaining, at: Date.now() };
     });
     Object.values(robots).forEach(r => {
         sub(`/${r.ns}/lane_status`, 'std_msgs/msg/String', (m) => {
