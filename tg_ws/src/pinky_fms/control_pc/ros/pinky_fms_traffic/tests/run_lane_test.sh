@@ -1,6 +1,6 @@
 #!/bin/bash
 # lane_traffic 격리 시험 (도메인 96, 이 PC 안에서만). 사용자 실제 스택(도메인 16)과 다른 세션 시험 도메인(91~95)은 건드리지 않는다.
-#   tests/run_lane_test.sh <headon_top|headon_wall|headon_curve|junction_turn|junction_straight|junction_exit|parked|follow|all>
+#   tests/run_lane_test.sh <headon_top|headon_wall|headon_curve|junction_turn|junction_straight|junction_exit|parked|close_headon|follow|all>
 SC=${1:-all}
 ROOT=${FMS_WS:-$HOME/pinky}; HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../../../.." && pwd)
 LANES=$REPO/control_pc/backend/maps/mission4_3_lanes_1cm/map.yaml
@@ -17,7 +17,7 @@ run() {   # 시나리오 a_start a_goal b_start b_goal b_speed 조정기대 [a_�
   local rc=${PIPESTATUS[0]}
   for p in "${PIDS[@]}"; do kill -INT -- -$p 2>/dev/null; done; sleep 1.5
   for p in "${PIDS[@]}"; do kill -KILL -- -$p 2>/dev/null; done
-   grep -E "마주침|우선권|비켜|통과|복귀|조정 끝|🆘|❌|갈림길|✋|서 있는|🔔" /tmp/lanetest_traffic.log | sed 's/^/    traffic| /'
+   grep -E "마주침|우선권|비켜|통과|복귀|조정 끝|🆘|❌|갈림길|✋|서 있는|🔔|물러" /tmp/lanetest_traffic.log | sed 's/^/    traffic| /'
   return $rc
 }
 JN="[1.15,0.88]"     # 차선 지도의 T자 갈림길 (lane_traffic 이 자동 추출한 값과 같음)
@@ -36,5 +36,7 @@ case $SC in parked|all) run parked "[0.06,0.45]" "[0.95,0.93]" "[0.62,0.93]" "[0
 #   amr_01 은 늦게 출발해 그 출구 차선(위쪽 띠)으로 동쪽 접근 → 예전: 출구 위에서 hold → 우선 로봇이 그 앞에서 obstacle ahead 교착
 #   지금: 출구 차선 0.75 m 안이면 hold 대신 바로 양보
 case $SC in junction_exit|all) run junction_exit "[0.25,0.93]" "[1.80,0.93]" "[1.15,0.45]" "[0.45,0.93]" 0.15 yes 6.0 || fail=1;; esac
+# 아주 가까이(0.19 m) 정면으로 붙은 상태에서 시작 (실물 2026-10-09 00:12 위치): 예전에는 '비켜설 자리 없음' STUCK
+case $SC in close_headon|all) run close_headon "[0.605,0.92]" "[1.80,0.93]" "[0.787,0.962]" "[0.30,0.93]" 0.15 yes || fail=1;; esac
 case $SC in follow|all) run follow "[0.30,0.93]" "[1.60,0.93]" "[0.70,0.93]" "[1.90,0.93]" 0.07 no || fail=1;; esac
 exit $fail

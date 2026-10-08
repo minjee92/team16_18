@@ -29,7 +29,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from .lane_geom import LaneGeometry, ang_diff, choose_yielder, headon, passed, rejoin_point
+from .lane_geom import LaneGeometry, ang_diff, choose_yielder, headon, passed, rejoin_point, retreat_then_escape
 
 LANE_STATUS_RE = re.compile(r'^/([^/]+)/lane_status$')
 INACTIVE = ('ARRIVED', 'FAILED', 'IDLE')
@@ -82,6 +82,7 @@ class Encounter:
         self.failed = set()         # 비켜서기에 실패한 로봇 id
         self.force_priority = None  # 갈림길 우선 로봇처럼 우선권이 정해진 경우
         self.parked = None          # 서 있는 로봇(미션 없음)이 길을 막는 경우 그 로봇 — 미션이 없어도 '끝남'으로 보지 않는다
+        self.pending_escape = None  # 뒤로 물러난 다음 이어서 비켜설 자리 (바로 비켜설 자리가 없을 때)
         self.rejoin_tries = 0       # 복귀가 막혀 복귀 자리를 다시 고른 횟수
         self.prio_path = None       # 우선권 로봇이 지나갈 중심선 점·진행 방향 (양보 로봇이 통로를 벗어났는지 판단)
         self.blocked_t = None       # PASS: 우선권 로봇이 양보 로봇 때문에 멈춰 있기 시작한 시각
@@ -258,7 +259,12 @@ class LaneTraffic(Node):
                 if left or not o.active(now):
                     self.get_logger().info(f'🚥 갈림길 ({j["c"][0]:.2f},{j["c"][1]:.2f}) {o.id} 통과 → 대기 로봇 출발 {[r.id for r in j["held"]]}')
                     for r in j['held']:
-                        if not self._busy(r):
+                        if self._busy(r):
+                            continue
+                        # 우선 로봇이 대기 로봇 쪽으로 나가는 중이면(같은 띠에서 정면) 풀어 주면 바로 마주친다 (실물 10-09 00:12)
+                        if o.active(now) and self._in_front(o, r, ahead=1.0, half=0.25) and self._jn_eligible(r, j):
+                            self._junction_yield(j, o, r, 'owner heading to held robot')
+                        else:
                             self._release(r, 'junction')
                     j.update(owner=None, owner_pose=None, held=set(), busy_t=None, exit=None)
                     o = None
@@ -284,6 +290,16 @@ class LaneTraffic(Node):
                     off = {'left': math.pi / 2, 'right': -math.pi / 2, 'straight': 0.0, 'back': math.pi}[ex]
                     j['exit'] = (ex, j['owner_pose'][2] + off)
                     self.get_logger().info(f'🚥 갈림길 {o.id} 출구: {ex}')
+            # 실제로 움직인 쪽으로 출구 보정: 정지 자리에서 0.15 m 넘게 움직였고 중심에서 0.2 m 넘게 벗어났으면 그 방향이 출구
+            # (보고된 방향·yaw 가 틀려도 따라잡는다 — 실물 10-09 00:12 에서 출구 차선 위 로봇을 hold 함)
+            if o.pose is not None and j['owner_pose'] is not None:
+                mv = math.hypot(o.pose[0] - j['owner_pose'][0], o.pose[1] - j['owner_pose'][1])
+                dc = self._jn_dist(o, j)
+                if mv > 0.15 and dc > 0.2:
+                    obs = math.atan2(o.pose[1] - j['c'][1], o.pose[0] - j['c'][0])
+                    if j['exit'] is None or ang_diff(obs, j['exit'][1]) > math.radians(45):
+                        self.get_logger().info(f'🚥 갈림길 {o.id} 실제 출구 방향 {math.degrees(obs):.0f}° 로 보정')
+                        j['exit'] = ('observed', obs)
             # 출구 차선 위 로봇: 우선 로봇이 곧 그쪽으로 나간다 → 세우면 교착 (23:44 실물) → hold 대신 바로 양보
             if j['exit'] is not None:
                 for r in list(self.robots.values()):
@@ -449,6 +465,14 @@ class LaneTraffic(Node):
             out = (y.acked() and y.traffic in ('YIELDING', 'YIELDED') and y.pose is not None
                    and math.hypot(y.pose[0] - e.rejoin[0], y.pose[1] - e.rejoin[1]) > 0.05
                    and not self.geo.in_corridor(y.pose[:2], e.prio_path)[0])
+            if e.pending_escape is not None and y.acked() and y.traffic == 'YIELDED':
+                esc, e.pending_escape = e.pending_escape, None
+                e.escape, e.t0 = esc, now
+                self.get_logger().info(f'↩️ {y.id} 뒤로 물러남 → 이어서 비켜서기 ({esc[0]:.2f}, {esc[1]:.2f})')
+                self._send(y, 'yield', x=round(esc[0], 3), y=round(esc[1], 3))
+                return
+            if e.pending_escape is not None:
+                out = False                 # 물러나는 중에는 아직 차선 위
             if out or (y.acked() and y.traffic == 'YIELDED'):
                 e.phase, e.t0 = 'PASS', now
                 self.get_logger().info(f'✅ {y.id} {"비켜섬" if y.traffic == "YIELDED" else "통로 벗어남"} → {e.priority.id} 우선 통과')
@@ -545,8 +569,18 @@ class LaneTraffic(Node):
                     res = True
                     break
         if res is None:
+            # 바로 비켜설 자리가 없으면 차선을 따라 뒤로 물러난 다음 비켜선다 (main brain 제안 2026-10-09)
+            order = cands if e.force_priority is not None else sorted(cands, key=lambda r: -(r.st.get('dist') or 0.0))
+            for y in order:
+                rt = retreat_then_escape(self.geo, y.pose, e.other(y).pose[:2])
+                if rt is not None:
+                    p, esc, info = e.other(y), rt[0], {'why': 'retreat on lane, then escape', 'then': [round(v, 2) for v in rt[1]]}
+                    e.pending_escape = rt[1]
+                    res = True
+                    break
+        if res is None:
             e.phase, e.t0 = 'STUCK', now
-            self.get_logger().error(f'🆘 {e.a.id}↔{e.b.id}: 비켜설 자리를 찾지 못함 — 정지 유지 (사람 확인 필요)')
+            self.get_logger().error(f'🆘 {e.a.id}↔{e.b.id}: 비켜설 자리도, 물러날 자리도 찾지 못함 — 정지 유지 (사람 확인 필요)')
             return
         e.yielder, e.priority, e.escape, e.info = y, p, esc, info
         e.rejoin = y.pose

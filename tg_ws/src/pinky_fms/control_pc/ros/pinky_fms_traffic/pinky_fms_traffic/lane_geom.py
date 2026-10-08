@@ -194,8 +194,9 @@ class LaneGeometry:
         cand, dc = cand[keep], dc[keep]
         if not len(cand):
             return None
-        # 직선 경로가 상대 옆을 지나면 안 된다
-        keep = seg_point_dist(np.repeat(p[None], len(cand), 0), cand, o) >= other_clear
+        # 직선 경로가 상대 옆을 지나면 안 된다. 이미 그보다 가까이 붙어 있으면(실물 10-09 00:12, 0.19 m) 출발점부터
+        # 조건을 못 지키므로 '지금보다 더 가까워지지 않는' 길이면 된다
+        keep = seg_point_dist(np.repeat(p[None], len(cand), 0), cand, o) >= min(other_clear, float(np.hypot(*(p - o))) - 0.01)
         cand, dc = cand[keep], dc[keep]
         if not len(cand):
             return None
@@ -216,6 +217,31 @@ class LaneGeometry:
         cost = seg_len + turn_w * turn + 2.0 * np.clip(self.center_pref - dc, 0.0, None)   # 중심에서 1 cm 덜 떨어지면 2 cm 더 먼 것과 같게
         k = int(np.argmin(cost))
         return float(cost[k]), (float(cand[k, 0]), float(cand[k, 1]))
+
+
+def retreat_then_escape(ga, pose, other_xy, reach=0.6, max_straight=0.5, other_clear=0.30):
+    """바로 비켜설 자리가 없을 때: 차선을 따라 뒤로(진행 반대) 물러날 차선 위 점 q 와, q 에서 비켜설 자리.
+    q 는 지금 위치에서 직선으로 갈 수 있고(max_straight 안, 벽 여유) 상대에서 other_clear 이상. 반환 ((qx,qy), escape_xy) 또는 None."""
+    p = np.asarray(pose[:2], dtype=float)
+    o = np.asarray(other_xy, dtype=float)
+    h = np.array([math.cos(pose[2]), math.sin(pose[2])])
+    cl = ga.local_centerline(pose, reach)
+    if not len(cl):
+        return None
+    d = np.hypot(*(cl - p).T)
+    ok = ((cl - p) @ h < -0.08) & (d <= max_straight) & (np.hypot(*(cl - o).T) >= other_clear)
+    for k in np.argsort(np.where(ok, d, np.inf)):
+        if not ok[k]:
+            break
+        q = cl[k]
+        n = max(2, int(d[k] / (ga.res * 0.5)) + 1)
+        pts = np.stack([np.linspace(p[0], q[0], n), np.linspace(p[1], q[1], n)], axis=1)
+        if (ga.floor.clearance_at(pts) < ga.pass_clear).any():
+            continue
+        found = ga.escape_for((q[0], q[1], pose[2]), o, max_dist=0.7)
+        if found is not None:
+            return (float(q[0]), float(q[1])), found[1]
+    return None
 
 
 def rejoin_point(ga, rejoin, from_xy, blockers, clear=0.35, skip=0.0, reach=1.2):
