@@ -4,6 +4,8 @@ Run in a sourced ROS workspace with pinky_autonomous installed. Pose, distance
 and detector measurements below are fixtures, not real sensor observations.
 """
 import math
+from pathlib import Path
+import sys
 from types import MethodType, SimpleNamespace
 import unittest
 
@@ -40,6 +42,31 @@ def fixture():
 
 
 class StateChecks(unittest.TestCase):
+    def test_simulation_adapter_return_phases_with_controlled_inputs(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+        from sim_mission import SimulationMission
+        logger = SimpleNamespace(info=lambda *_: None, warn=lambda *_: None, error=lambda *_: None)
+        n = SimulationMission(None, logger, 1280, 720, 0, False)
+        # Inject detector measurements and poses for a state integration test.
+        # This is not camera inference or a simulated physical return journey.
+        n._detect = lambda: (None, None, None, 0.0, 0.8)
+        for t in (10, 10.1, 10.2):
+            n.step(None, t, (0, 0, 0), 1.0)
+        self.assertTrue(n.junction_latched)
+        n.step(None, 11, (1, 0, 0), 1.0)
+        self.assertEqual(n.return_phase, 'advance')
+        n.step(None, 12, (1.26, 0, 0), 1.0)
+        n.step(None, 13.1, (1.26, 0, 0), 1.0)
+        command = n.step(None, 13.2, (1.26, 0, 0), 1.0)
+        self.assertEqual(n.return_phase, 'turning')
+        self.assertGreater(abs(command[5]), 0)
+        self.assertFalse(command[6])  # Original turning phase does not track lanes.
+        n.step(None, 15, (1.26, 0, math.pi), 1.0)
+        self.assertEqual(n.return_phase, 'following')
+        command = n.step(None, 19, (0.2, 0, math.pi), 1.0)
+        self.assertEqual(n.state, 'home')
+        self.assertEqual(command[4:6], (0.0, 0.0))
+
     def test_crosswalk_clear_slows_then_resumes_and_rearms(self):
         n = fixture()
         n._decide_state(10, 0.06, 0)

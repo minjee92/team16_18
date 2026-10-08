@@ -14,11 +14,14 @@
     <arg name="world_name" default="fms_course"/>
     <arg name="nav" default="true"/> <!-- false for manual driving / lane controller tests -->
     <arg name="camera" default="true"/>
+    <arg name="camera_width" default="1280"/>
+    <arg name="camera_height" default="720"/>
+    <arg name="camera_tilt" default="8"/>
     <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
 
     <!-- 로봇 모델: sim_urdf.sh 가 만든 URDF (가제보 센서 참조 수정본). TF 프레임은 'amr_01/...' 로 나간다 -->
     <node pkg="robot_state_publisher" exec="robot_state_publisher" name="robot_state_publisher" namespace="$(var namespace)" output="screen">
-        <param name="robot_description" value="$(command '$(find-pkg-prefix pinky_fms_sim)/lib/pinky_fms_sim/sim_urdf.sh $(var namespace)')"/>
+        <param name="robot_description" value="$(command '$(find-pkg-prefix pinky_fms_sim)/lib/pinky_fms_sim/sim_urdf.sh $(var namespace) $(var camera_width) $(var camera_height) $(var camera_tilt)')"/>
         <param name="frame_prefix" value="$(var namespace)/"/>
         <param name="use_sim_time" value="True"/>
         <remap from="/tf" to="tf"/>

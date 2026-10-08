@@ -1,0 +1,2625 @@
+{
+  "mode": "basic_lane_tracking",
+  "drive_enabled": true,
+  "frames": 112,
+  "valid_frames": 100,
+  "tracker_modes": {
+    "BOTH": 74,
+    "SINGLE": 26,
+    "LOST": 12
+  },
+  "guard_stops": 12,
+  "displacement_m": 0.8874374700416455,
+  "model": "best.pt",
+  "termination": "persistent_lane_loss",
+  "heading_gain": 0.0,
+  "far_fallback": true,
+  "path_length_m": 1.197885036669044,
+  "algorithm": "pinky_autonomous.LaneTracker + AutonomousDriveNode._compute_command",
+  "history": [
+    {
+      "stamp": 1.06,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.04217330468749998,
+      "linear": 0.07831306781250001,
+      "angular": 0.06325995703124998,
+      "guard_stop": false,
+      "forward_clearance_m": 0.35736891627311707,
+      "odom_xy": [
+        -1.1201526614137206e-18,
+        3.079218063923899e-35
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9345306754112244
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.9078397154808044
+        }
+      ]
+    },
+    {
+      "stamp": 1.192,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.04353279560546879,
+      "linear": 0.07825868817578126,
+      "angular": 0.06529919340820318,
+      "guard_stop": false,
+      "forward_clearance_m": 0.36352306604385376,
+      "odom_xy": [
+        0.01553592071614502,
+        0.00010104948027405946
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8711215853691101
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7388550043106079
+        }
+      ]
+    },
+    {
+      "stamp": 1.388,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.03993736103407114,
+      "linear": 0.07840250555863715,
+      "angular": 0.05990604155110671,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3728841245174408,
+      "odom_xy": [
+        0.01866682758061254,
+        0.00014509967040626798
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9185329675674438
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8809351325035095
+        }
+      ]
+    },
+    {
+      "stamp": 1.588,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.03242568053244353,
+      "linear": 0.07870297277870227,
+      "angular": 0.0486385207986653,
+      "guard_stop": false,
+      "forward_clearance_m": 0.37849241495132446,
+      "odom_xy": [
+        0.03433958390100342,
+        0.00048212517348689534
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9458765387535095
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8630074262619019
+        }
+      ]
+    },
+    {
+      "stamp": 1.752,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.021378839576399793,
+      "linear": 0.07914484641694401,
+      "angular": 0.032068259364599686,
+      "guard_stop": false,
+      "forward_clearance_m": 0.38497108221054077,
+      "odom_xy": [
+        0.05006941903558839,
+        0.0009929856642775438
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9479131698608398
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8686017990112305
+        }
+      ]
+    },
+    {
+      "stamp": 1.948,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.011720103044794875,
+      "linear": 0.07953119587820821,
+      "angular": 0.017580154567192315,
+      "guard_stop": false,
+      "forward_clearance_m": 0.40806111693382263,
+      "odom_xy": [
+        0.06588352553489892,
+        0.0016360181202758341
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8849667906761169
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7673618793487549
+        }
+      ]
+    },
+    {
+      "stamp": 2.148,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.004214870323160705,
+      "linear": 0.07983140518707357,
+      "angular": 0.006322305484741057,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4267258942127228,
+      "odom_xy": [
+        0.08018276688315074,
+        0.002287263789067421
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.923500657081604
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8435440063476562
+        }
+      ]
+    },
+    {
+      "stamp": 2.38,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.0020637122971490776,
+      "linear": 0.07991745150811404,
+      "angular": -0.0030955684457236164,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4530715346336365,
+      "odom_xy": [
+        0.09931416123417561,
+        0.003207862711390678
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9424825310707092
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.627387523651123
+        }
+      ]
+    },
+    {
+      "stamp": 2.676,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.007078096328033649,
+      "linear": 0.07971687614687865,
+      "angular": -0.010617144492050474,
+      "guard_stop": false,
+      "forward_clearance_m": 0.482110857963562,
+      "odom_xy": [
+        0.12006716781406739,
+        0.004216526528664058
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9029550552368164
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.6833674907684326
+        }
+      ]
+    },
+    {
+      "stamp": 2.84,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.010529316919243458,
+      "linear": 0.07957882732323027,
+      "angular": -0.015793975378865188,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4815143346786499,
+      "odom_xy": [
+        0.13599831844709656,
+        0.004970632221272083
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9414945244789124
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5931501984596252
+        }
+      ]
+    },
+    {
+      "stamp": 2.972,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.012240420075773006,
+      "linear": 0.07951038319696908,
+      "angular": -0.018360630113659508,
+      "guard_stop": false,
+      "forward_clearance_m": 0.48869943618774414,
+      "odom_xy": [
+        0.1439496114553587,
+        0.005332837710167674
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9427648782730103
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7510894536972046
+        }
+      ]
+    },
+    {
+      "stamp": 3.104,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.012680264694606924,
+      "linear": 0.07949278941221573,
+      "angular": -0.019020397041910386,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4996403455734253,
+      "odom_xy": [
+        0.15983811582304092,
+        0.006015492621912338
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9394299983978271
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5977201461791992
+        }
+      ]
+    },
+    {
+      "stamp": 3.204,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.00418148656384016,
+      "linear": 0.07983274053744639,
+      "angular": 0.00627222984576024,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5022580027580261,
+      "odom_xy": [
+        0.16778112516013227,
+        0.006334643173328117
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.938662588596344
+        }
+      ]
+    },
+    {
+      "stamp": 3.336,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.003762931212207575,
+      "linear": 0.0798494827515117,
+      "angular": 0.0056443968183113626,
+      "guard_stop": false,
+      "forward_clearance_m": 0.49664193391799927,
+      "odom_xy": [
+        0.17735094383200445,
+        0.006710813625096096
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9331356883049011
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5049766898155212
+        }
+      ]
+    },
+    {
+      "stamp": 3.436,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.002959271507759498,
+      "linear": 0.07988162913968962,
+      "angular": 0.004438907261639247,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5107348561286926,
+      "odom_xy": [
+        0.18532925704045186,
+        0.007029620329773599
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9327666163444519
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5324444770812988
+        }
+      ]
+    },
+    {
+      "stamp": 3.568,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.015775027358436108,
+      "linear": 0.07936899890566255,
+      "angular": -0.02366254103765416,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5148776173591614,
+      "odom_xy": [
+        0.1933102385352103,
+        0.007352743837971433
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.934171199798584
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5618268251419067
+        }
+      ]
+    },
+    {
+      "stamp": 3.8280000000000003,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.0006957336849614075,
+      "linear": 0.07997217065260155,
+      "angular": -0.0010436005274421113,
+      "guard_stop": false,
+      "forward_clearance_m": 0.49965304136276245,
+      "odom_xy": [
+        0.215527677599976,
+        0.008198570431914094
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9352791905403137
+        }
+      ]
+    },
+    {
+      "stamp": 3.928,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.01441764773305324,
+      "linear": 0.07942329409067787,
+      "angular": 0.02162647159957986,
+      "guard_stop": false,
+      "forward_clearance_m": 0.487417995929718,
+      "odom_xy": [
+        0.2235153217446398,
+        0.008474007618759266
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9305232167243958
+        }
+      ]
+    },
+    {
+      "stamp": 4.06,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.030913196229638173,
+      "linear": 0.07876347215081447,
+      "angular": 0.04636979434445726,
+      "guard_stop": false,
+      "forward_clearance_m": 0.49240824580192566,
+      "odom_xy": [
+        0.23780658530731322,
+        0.008989987740444629
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9266497492790222
+        }
+      ]
+    },
+    {
+      "stamp": 4.16,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.02859726442444699,
+      "linear": 0.07885610942302212,
+      "angular": 0.04289589663667048,
+      "guard_stop": false,
+      "forward_clearance_m": 0.49240824580192566,
+      "odom_xy": [
+        0.24096532860341394,
+        0.00911191960823651
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9235730171203613
+        }
+      ]
+    },
+    {
+      "stamp": 4.392,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.019159387660667437,
+      "linear": 0.0792336244935733,
+      "angular": 0.028739081491001156,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5015302896499634,
+      "odom_xy": [
+        0.259870807234932,
+        0.00995507367094418
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9188200235366821
+        }
+      ]
+    },
+    {
+      "stamp": 4.524,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.009547071774452003,
+      "linear": 0.07961811712902192,
+      "angular": 0.014320607661678005,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5129448771476746,
+      "odom_xy": [
+        0.2709471153529438,
+        0.010529434829315286
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9185246229171753
+        }
+      ]
+    },
+    {
+      "stamp": 4.688,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.0002629788604391857,
+      "linear": 0.07998948084558244,
+      "angular": 0.00039446829065877854,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5106208920478821,
+      "odom_xy": [
+        0.28048386608456594,
+        0.011052729497401452
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8821021318435669
+        }
+      ]
+    },
+    {
+      "stamp": 4.788,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.002943594071206377,
+      "linear": 0.07988225623715174,
+      "angular": -0.004415391106809566,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5065988302230835,
+      "odom_xy": [
+        0.28846437583901274,
+        0.011499510157452946
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8768486976623535
+        }
+      ]
+    },
+    {
+      "stamp": 4.984,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.024069222680274005,
+      "linear": 0.07903723109278904,
+      "angular": -0.03610383402041101,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5155972242355347,
+      "odom_xy": [
+        0.30441702731440895,
+        0.012386808740352336
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9290996789932251
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.523464560508728
+        }
+      ]
+    },
+    {
+      "stamp": 5.084,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.046034020479922486,
+      "linear": 0.0781586391808031,
+      "angular": -0.06905103071988372,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5164993405342102,
+      "odom_xy": [
+        0.3123127646964283,
+        0.01281053988775309
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9289008378982544
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.6197953820228577
+        }
+      ]
+    },
+    {
+      "stamp": 5.216,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.07121946402881477,
+      "linear": 0.07715122143884741,
+      "angular": -0.10682919604322215,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5013216137886047,
+      "odom_xy": [
+        0.324808001385474,
+        0.013393621275684118
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.928511381149292
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.733739972114563
+        }
+      ]
+    },
+    {
+      "stamp": 5.316,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.07282477301940841,
+      "linear": 0.07708700907922367,
+      "angular": -0.10923715952911262,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4801446199417114,
+      "odom_xy": [
+        0.33408433858573966,
+        0.013725393262455428
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9089053273200989
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.73525470495224
+        }
+      ]
+    },
+    {
+      "stamp": 5.448,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.07013868798221144,
+      "linear": 0.07719445248071154,
+      "angular": -0.10520803197331716,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4664642810821533,
+      "odom_xy": [
+        0.34179128610139,
+        0.01391075579910324
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9093456268310547
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7490456104278564
+        }
+      ]
+    },
+    {
+      "stamp": 5.548,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.06366935964987189,
+      "linear": 0.07745322561400513,
+      "angular": -0.09550403947480783,
+      "guard_stop": false,
+      "forward_clearance_m": 0.447809100151062,
+      "odom_xy": [
+        0.3495091541799298,
+        0.014013358644403211
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9116231203079224
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7157172560691833
+        }
+      ]
+    },
+    {
+      "stamp": 5.712,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.056098179205725525,
+      "linear": 0.07775607283177098,
+      "angular": -0.08414726880858829,
+      "guard_stop": false,
+      "forward_clearance_m": 0.42114102840423584,
+      "odom_xy": [
+        0.364994364425191,
+        0.01398685586162284
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9054856896400452
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7626189589500427
+        }
+      ]
+    },
+    {
+      "stamp": 5.876,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.048821009317273276,
+      "linear": 0.07804715962730907,
+      "angular": -0.0732315139759099,
+      "guard_stop": false,
+      "forward_clearance_m": 0.40846601128578186,
+      "odom_xy": [
+        0.37276415027144977,
+        0.013865192475125
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9218752980232239
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7826287746429443
+        }
+      ]
+    },
+    {
+      "stamp": 6.076,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.04246328348094592,
+      "linear": 0.07830146866076217,
+      "angular": -0.06369492522141888,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3974025845527649,
+      "odom_xy": [
+        0.3883629345879685,
+        0.013437947714997728
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9048935174942017
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8146405816078186
+        }
+      ]
+    },
+    {
+      "stamp": 6.204,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.039740761954005936,
+      "linear": 0.07841036952183976,
+      "angular": -0.0596111429310089,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3786693215370178,
+      "odom_xy": [
+        0.40087498132801763,
+        0.012936866185722986
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8959084153175354
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8316166996955872
+        }
+      ]
+    },
+    {
+      "stamp": 6.372,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.03611425289175727,
+      "linear": 0.07855542988432972,
+      "angular": -0.05417137933763591,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3795371353626251,
+      "odom_xy": [
+        0.41183595555284397,
+        0.012394790918970021
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8747343420982361
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8558761477470398
+        }
+      ]
+    },
+    {
+      "stamp": 6.472,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.03650298420086051,
+      "linear": 0.07853988063196558,
+      "angular": -0.054754476301290766,
+      "guard_stop": false,
+      "forward_clearance_m": 0.36733338236808777,
+      "odom_xy": [
+        0.41967727409009653,
+        0.011952318780967367
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.8423149585723877
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8153138756752014
+        }
+      ]
+    },
+    {
+      "stamp": 6.932,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.014569291522260944,
+      "linear": 0.07941722833910957,
+      "angular": -0.02185393728339142,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3466092646121979,
+      "odom_xy": [
+        0.45884226938192824,
+        0.009097551756843441
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.8972305655479431
+        }
+      ]
+    },
+    {
+      "stamp": 7.032,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.0025025873691747677,
+      "linear": 0.079899896505233,
+      "angular": 0.0037538810537621516,
+      "guard_stop": false,
+      "forward_clearance_m": 0.352924644947052,
+      "odom_xy": [
+        0.46672134778003066,
+        0.008397304244893563
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9128913879394531
+        }
+      ]
+    },
+    {
+      "stamp": 7.196,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.01990403409826959,
+      "linear": 0.07920383863606921,
+      "angular": 0.02985605114740439,
+      "guard_stop": false,
+      "forward_clearance_m": 0.35951516032218933,
+      "odom_xy": [
+        0.47626659506520874,
+        0.00753490712632673
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9214881658554077
+        }
+      ]
+    },
+    {
+      "stamp": 7.36,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.011554473904035047,
+      "linear": 0.07953782104383861,
+      "angular": 0.01733171085605257,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3426239490509033,
+      "odom_xy": [
+        0.49206588436895005,
+        0.0061458218393862524
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9226807951927185
+        }
+      ]
+    },
+    {
+      "stamp": 7.5600000000000005,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.02219135244470168,
+      "linear": 0.07911234590221193,
+      "angular": -0.03328702866705252,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3689717650413513,
+      "odom_xy": [
+        0.507913570357784,
+        0.004830069585431296
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9220433831214905
+        }
+      ]
+    },
+    {
+      "stamp": 7.792,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.07767344547106483,
+      "linear": 0.0768930621811574,
+      "angular": -0.11651016820659725,
+      "guard_stop": false,
+      "forward_clearance_m": 0.36214879155158997,
+      "odom_xy": [
+        0.5236861820615748,
+        0.003512488815336253
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9230014085769653
+        }
+      ]
+    },
+    {
+      "stamp": 7.988,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.11048516871505072,
+      "linear": 0.07558059325139797,
+      "angular": -0.1657277530725761,
+      "guard_stop": false,
+      "forward_clearance_m": 0.35939669609069824,
+      "odom_xy": [
+        0.539020332687209,
+        0.0020374866119406395
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9347168803215027
+        }
+      ]
+    },
+    {
+      "stamp": 8.088,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.14208133654925953,
+      "linear": 0.07431674653802962,
+      "angular": -0.2131220048238893,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3549191355705261,
+      "odom_xy": [
+        0.5465389893104811,
+        0.0011705092680337579
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9356261491775513
+        }
+      ]
+    },
+    {
+      "stamp": 8.252,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.19338873628223835,
+      "linear": 0.07226445054871046,
+      "angular": -0.2900831044233575,
+      "guard_stop": false,
+      "forward_clearance_m": 0.33981603384017944,
+      "odom_xy": [
+        0.5612584719950602,
+        -0.0009563403634298162
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9376968741416931
+        }
+      ]
+    },
+    {
+      "stamp": 8.352,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.33811941106324317,
+      "linear": 0.06647522355747026,
+      "angular": -0.5071791165948647,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3178231120109558,
+      "odom_xy": [
+        0.569796651503681,
+        -0.0025163658912549444
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9292446970939636
+        }
+      ]
+    },
+    {
+      "stamp": 8.484,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.5634429661761161,
+      "linear": 0.05746228135295535,
+      "angular": -0.8451644492641741,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3178231120109558,
+      "odom_xy": [
+        0.5751105287931143,
+        -0.0036508768355343777
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.918029248714447
+        }
+      ]
+    },
+    {
+      "stamp": 8.584,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.8074378501702957,
+      "linear": 0.04770248599318817,
+      "angular": -1.2111567752554435,
+      "guard_stop": false,
+      "forward_clearance_m": 0.28879469633102417,
+      "odom_xy": [
+        0.5807179522084155,
+        -0.005075999283026138
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9315897822380066
+        }
+      ]
+    },
+    {
+      "stamp": 8.78,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 1.0,
+      "linear": 0.04,
+      "angular": -1.5,
+      "guard_stop": false,
+      "forward_clearance_m": 0.2544921040534973,
+      "odom_xy": [
+        0.5888431525781446,
+        -0.00796968847064107
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9472787380218506
+        }
+      ]
+    },
+    {
+      "stamp": 8.88,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 1.0,
+      "linear": 0.04,
+      "angular": -1.5,
+      "guard_stop": false,
+      "forward_clearance_m": 0.22652789950370789,
+      "odom_xy": [
+        0.5925494930176793,
+        -0.009841675104527494
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9558774828910828
+        }
+      ]
+    },
+    {
+      "stamp": 9.076,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 1.0,
+      "linear": 0.04,
+      "angular": -1.5,
+      "guard_stop": false,
+      "forward_clearance_m": 0.18671515583992004,
+      "odom_xy": [
+        0.5990534967392751,
+        -0.014476854334628498
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9594037532806396
+        }
+      ]
+    },
+    {
+      "stamp": 9.176,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.9020391626264577,
+      "linear": 0.04391843349494169,
+      "angular": -1.3530587439396866,
+      "guard_stop": false,
+      "forward_clearance_m": 0.17568881809711456,
+      "odom_xy": [
+        0.6019262360367841,
+        -0.017257868545001262
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9660353064537048
+        }
+      ]
+    },
+    {
+      "stamp": 9.276,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.6994012063255532,
+      "linear": 0.052023951746977874,
+      "angular": -1.04910180948833,
+      "guard_stop": false,
+      "forward_clearance_m": 0.16642552614212036,
+      "odom_xy": [
+        0.604717356497354,
+        -0.020564804436314258
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9570344686508179
+        }
+      ]
+    },
+    {
+      "stamp": 9.504,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.452499438069541,
+      "linear": 0.06190002247721836,
+      "angular": -0.6787491571043115,
+      "guard_stop": false,
+      "forward_clearance_m": 0.16005222499370575,
+      "odom_xy": [
+        0.6117477345636552,
+        -0.03312074608697215
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9515775442123413
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8165280222892761
+        }
+      ]
+    },
+    {
+      "stamp": 9.604,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.2568352860649596,
+      "linear": 0.06972658855740162,
+      "angular": -0.38525292909743936,
+      "guard_stop": false,
+      "forward_clearance_m": 0.16544871032238007,
+      "odom_xy": [
+        0.6136889296075538,
+        -0.038905132604108994
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9298766851425171
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.7661607265472412
+        }
+      ]
+    },
+    {
+      "stamp": 9.704,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.11250493108858506,
+      "linear": 0.0754998027564566,
+      "angular": -0.1687573966328776,
+      "guard_stop": false,
+      "forward_clearance_m": 0.17006529867649078,
+      "odom_xy": [
+        0.6155988292569987,
+        -0.04685601961307225
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9329357147216797
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8985657095909119
+        }
+      ]
+    },
+    {
+      "stamp": 9.9,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.03559554790296446,
+      "linear": 0.07857617808388143,
+      "angular": -0.05339332185444669,
+      "guard_stop": false,
+      "forward_clearance_m": 0.17432743310928345,
+      "odom_xy": [
+        0.6173143675559857,
+        -0.05723741409278662
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9506512880325317
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8879950046539307
+        }
+      ]
+    },
+    {
+      "stamp": 10.0,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.013378026601332894,
+      "linear": 0.07946487893594668,
+      "angular": 0.02006703990199934,
+      "guard_stop": false,
+      "forward_clearance_m": 0.18369771540164948,
+      "odom_xy": [
+        0.6182958783928082,
+        -0.06500856117894627
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9244455099105835
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.9233335256576538
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5598211884498596
+        }
+      ]
+    },
+    {
+      "stamp": 10.168,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.04316787304116373,
+      "linear": 0.07827328507835345,
+      "angular": 0.06475180956174559,
+      "guard_stop": false,
+      "forward_clearance_m": 0.19913989305496216,
+      "odom_xy": [
+        0.6199608590056057,
+        -0.07920784252056279
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9372143149375916
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.9213917255401611
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5153705477714539
+        }
+      ]
+    },
+    {
+      "stamp": 10.332,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.04433199537589076,
+      "linear": 0.07822672018496438,
+      "angular": 0.06649799306383614,
+      "guard_stop": false,
+      "forward_clearance_m": 0.21447649598121643,
+      "odom_xy": [
+        0.6216899842177758,
+        -0.0932144660824609
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9497030973434448
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9371104836463928
+        }
+      ]
+    },
+    {
+      "stamp": 10.596,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.03077828415964222,
+      "linear": 0.0787688686336143,
+      "angular": 0.04616742623946333,
+      "guard_stop": false,
+      "forward_clearance_m": 0.2301727533340454,
+      "odom_xy": [
+        0.6240207637948437,
+        -0.11026619136673564
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9556463360786438
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9359889626502991
+        }
+      ]
+    },
+    {
+      "stamp": 10.728,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.014280874136781519,
+      "linear": 0.07942876503452874,
+      "angular": 0.02142131120517228,
+      "guard_stop": false,
+      "forward_clearance_m": 0.24596084654331207,
+      "odom_xy": [
+        0.626105874233288,
+        -0.1242816166899242
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9545003175735474
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.922448456287384
+        }
+      ]
+    },
+    {
+      "stamp": 10.96,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.0015979313353544598,
+      "linear": 0.07993608274658583,
+      "angular": -0.0023968970030316897,
+      "guard_stop": false,
+      "forward_clearance_m": 0.26198700070381165,
+      "odom_xy": [
+        0.6287943620906618,
+        -0.1415425301450124
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9518508315086365
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8877469897270203
+        }
+      ]
+    },
+    {
+      "stamp": 11.092,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.01144393300303695,
+      "linear": 0.07954224267987853,
+      "angular": -0.017165899504555427,
+      "guard_stop": false,
+      "forward_clearance_m": 0.2698020339012146,
+      "odom_xy": [
+        0.6300441092418706,
+        -0.1494316755284731
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9480606913566589
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9004814624786377
+        }
+      ]
+    },
+    {
+      "stamp": 11.42,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.021719713755077717,
+      "linear": 0.07913121144979689,
+      "angular": -0.03257957063261657,
+      "guard_stop": false,
+      "forward_clearance_m": 0.29481858015060425,
+      "odom_xy": [
+        0.6346800409893313,
+        -0.17930482189190827
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9495756030082703
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9368410706520081
+        }
+      ]
+    },
+    {
+      "stamp": 11.552,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.029031014603953888,
+      "linear": 0.07883875941584184,
+      "angular": -0.043546521905930835,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3083023428916931,
+      "odom_xy": [
+        0.6360891613411114,
+        -0.18869875114250012
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9551331996917725
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9298337697982788
+        }
+      ]
+    },
+    {
+      "stamp": 11.784,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.035708620353408306,
+      "linear": 0.07857165518586368,
+      "angular": -0.05356293053011246,
+      "guard_stop": false,
+      "forward_clearance_m": 0.33342528343200684,
+      "odom_xy": [
+        0.638330891358511,
+        -0.20430746561650479
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9525015950202942
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9266191124916077
+        }
+      ]
+    },
+    {
+      "stamp": 11.916,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.03861538818935598,
+      "linear": 0.07845538447242575,
+      "angular": -0.05792308228403398,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3390883803367615,
+      "odom_xy": [
+        0.6402151130968854,
+        -0.21832746567021244
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9532410502433777
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9226027727127075
+        }
+      ]
+    },
+    {
+      "stamp": 12.048,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.04023039076236236,
+      "linear": 0.0783907843695055,
+      "angular": -0.06034558614354354,
+      "guard_stop": false,
+      "forward_clearance_m": 0.34635820984840393,
+      "odom_xy": [
+        0.6412010226083277,
+        -0.22611314355017725
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9535905122756958
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9361522793769836
+        }
+      ]
+    },
+    {
+      "stamp": 12.148,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.040521808200930945,
+      "linear": 0.07837912767196277,
+      "angular": -0.06078271230139642,
+      "guard_stop": false,
+      "forward_clearance_m": 0.35564500093460083,
+      "odom_xy": [
+        0.6421403826406888,
+        -0.23389702602146253
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9540075063705444
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9426742196083069
+        }
+      ]
+    },
+    {
+      "stamp": 12.28,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.0404163460627098,
+      "linear": 0.07838334615749161,
+      "angular": -0.0606245190940647,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3588544428348541,
+      "odom_xy": [
+        0.6430324266304259,
+        -0.24168423346803014
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9537861943244934
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9388088583946228
+        }
+      ]
+    },
+    {
+      "stamp": 12.408,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.0398031954854796,
+      "linear": 0.07840787218058082,
+      "angular": -0.0597047932282194,
+      "guard_stop": false,
+      "forward_clearance_m": 0.37493467330932617,
+      "odom_xy": [
+        0.6446746791224718,
+        -0.25727446465632586
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9541271924972534
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9374739527702332
+        }
+      ]
+    },
+    {
+      "stamp": 12.544,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.038796204956407745,
+      "linear": 0.07844815180174369,
+      "angular": -0.05819430743461162,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3843896687030792,
+      "odom_xy": [
+        0.6454254118377764,
+        -0.2650790200610204
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9541758894920349
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9347670674324036
+        }
+      ]
+    },
+    {
+      "stamp": 12.708,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.037113041825464016,
+      "linear": 0.07851547832698144,
+      "angular": -0.055669562738196024,
+      "guard_stop": false,
+      "forward_clearance_m": 0.40160810947418213,
+      "odom_xy": [
+        0.6467896912933494,
+        -0.2807084870594022
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9554648995399475
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9362426996231079
+        }
+      ]
+    },
+    {
+      "stamp": 12.94,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.034500811853194764,
+      "linear": 0.0786199675258722,
+      "angular": -0.05175121777979215,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4159732460975647,
+      "odom_xy": [
+        0.6479766251872161,
+        -0.29636603916283405
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9565861225128174
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9377365112304688
+        }
+      ]
+    },
+    {
+      "stamp": 13.072,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.03163437701950015,
+      "linear": 0.07873462491922,
+      "angular": -0.04745156552925023,
+      "guard_stop": false,
+      "forward_clearance_m": 0.42197704315185547,
+      "odom_xy": [
+        0.6485065225366614,
+        -0.30420889251778443
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9575948119163513
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9289771318435669
+        }
+      ]
+    },
+    {
+      "stamp": 13.336,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.02831376427772505,
+      "linear": 0.078867449428891,
+      "angular": -0.04247064641658757,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4521319568157196,
+      "odom_xy": [
+        0.6499475205643912,
+        -0.3293611100500371
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9529104828834534
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9311659932136536
+        }
+      ]
+    },
+    {
+      "stamp": 13.468,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.025723754283317562,
+      "linear": 0.0789710498286673,
+      "angular": -0.03858563142497634,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4581694006919861,
+      "odom_xy": [
+        0.6503212589466438,
+        -0.33723632907157486
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9547320604324341
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9322612881660461
+        }
+      ]
+    },
+    {
+      "stamp": 13.6,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.023385351762425798,
+      "linear": 0.07906458592950297,
+      "angular": -0.035078027643638696,
+      "guard_stop": false,
+      "forward_clearance_m": 0.46352219581604004,
+      "odom_xy": [
+        0.6506629233049362,
+        -0.34512396066699624
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9572500586509705
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9405961632728577
+        }
+      ]
+    },
+    {
+      "stamp": 13.728,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.021930004834283305,
+      "linear": 0.07912279980662867,
+      "angular": -0.032895007251424954,
+      "guard_stop": false,
+      "forward_clearance_m": 0.48268717527389526,
+      "odom_xy": [
+        0.651260088864194,
+        -0.36092369334304236
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9583407044410706
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9340265989303589
+        }
+      ]
+    },
+    {
+      "stamp": 13.828,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.02077238252667391,
+      "linear": 0.07916910469893304,
+      "angular": -0.031158573790010864,
+      "guard_stop": false,
+      "forward_clearance_m": 0.48755961656570435,
+      "odom_xy": [
+        0.6514684493519975,
+        -0.3672493862822918
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9554522633552551
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9282119870185852
+        }
+      ]
+    },
+    {
+      "stamp": 13.928,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.01950783606876605,
+      "linear": 0.07921968655724936,
+      "angular": -0.029261754103149074,
+      "guard_stop": false,
+      "forward_clearance_m": 0.49327218532562256,
+      "odom_xy": [
+        0.6517060504964652,
+        -0.37516180076785954
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9540961384773254
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9284695386886597
+        }
+      ]
+    },
+    {
+      "stamp": 14.028,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.0185477501261854,
+      "linear": 0.07925808999495258,
+      "angular": -0.027821625189278103,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5045056343078613,
+      "odom_xy": [
+        0.6519597170175848,
+        -0.3846643684578604
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9532920718193054
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9257263541221619
+        }
+      ]
+    },
+    {
+      "stamp": 14.192,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.017232747780911144,
+      "linear": 0.07931069008876356,
+      "angular": -0.025849121671366715,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5194308161735535,
+      "odom_xy": [
+        0.652214538906558,
+        -0.3957571066947397
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9546536803245544
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9268829822540283
+        }
+      ]
+    },
+    {
+      "stamp": 14.292,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.016290419603370503,
+      "linear": 0.07934838321586518,
+      "angular": -0.024435629405055753,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5298426747322083,
+      "odom_xy": [
+        0.6523107886321643,
+        -0.40051435324504303
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.954046368598938
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9212535619735718
+        }
+      ]
+    },
+    {
+      "stamp": 14.392,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.015163514769900036,
+      "linear": 0.079393459409204,
+      "angular": -0.022745272154850053,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5298426747322083,
+      "odom_xy": [
+        0.6524551522403162,
+        -0.4084468206075753
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9468798041343689
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9266279339790344
+        }
+      ]
+    },
+    {
+      "stamp": 14.688,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.015024560507358928,
+      "linear": 0.07939901757970565,
+      "angular": -0.022536840761038394,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5591901540756226,
+      "odom_xy": [
+        0.6527774294719262,
+        -0.4322619104448403
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9487367272377014
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9082012176513672
+        },
+        {
+          "class": "crosswalk",
+          "confidence": 0.6179862022399902
+        }
+      ]
+    },
+    {
+      "stamp": 14.788,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.015457725791096598,
+      "linear": 0.07938169096835614,
+      "angular": -0.023186588686644898,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5591901540756226,
+      "odom_xy": [
+        0.6528488020107301,
+        -0.440201400792235
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9456235766410828
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9131289720535278
+        },
+        {
+          "class": "crosswalk",
+          "confidence": 0.7308763265609741
+        }
+      ]
+    },
+    {
+      "stamp": 14.916,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.015960621339759593,
+      "linear": 0.07936157514640961,
+      "angular": -0.02394093200963939,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5702798366546631,
+      "odom_xy": [
+        0.6529368949051078,
+        -0.45607761897641724
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9469836950302124
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9202847480773926
+        },
+        {
+          "class": "crosswalk",
+          "confidence": 0.6727378964424133
+        }
+      ]
+    },
+    {
+      "stamp": 15.052,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.013854500421025106,
+      "linear": 0.079445819983159,
+      "angular": -0.020781750631537657,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5684137940406799,
+      "odom_xy": [
+        0.6529530532587716,
+        -0.4640138386101363
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.945283055305481
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9272152185440063
+        },
+        {
+          "class": "crosswalk",
+          "confidence": 0.7255126237869263
+        }
+      ]
+    },
+    {
+      "stamp": 15.216,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.010866951996913718,
+      "linear": 0.07956532192012344,
+      "angular": -0.016300427995370577,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5639382004737854,
+      "odom_xy": [
+        0.6529381260039582,
+        -0.47831373309594055
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.933759331703186
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9125467538833618
+        },
+        {
+          "class": "crosswalk",
+          "confidence": 0.7048189043998718
+        }
+      ]
+    },
+    {
+      "stamp": 15.348,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.007931360193981532,
+      "linear": 0.07968274559224074,
+      "angular": -0.0118970402909723,
+      "guard_stop": false,
+      "forward_clearance_m": 0.540730893611908,
+      "odom_xy": [
+        0.6528920333588367,
+        -0.489450390250422
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9375015497207642
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8963879346847534
+        },
+        {
+          "class": "crosswalk",
+          "confidence": 0.766015350818634
+        }
+      ]
+    },
+    {
+      "stamp": 15.58,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.006684799647700633,
+      "linear": 0.07973260801409197,
+      "angular": -0.010027199471550948,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5359636545181274,
+      "odom_xy": [
+        0.6527999044457203,
+        -0.503791106964044
+      ],
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9286754131317139
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.9059109687805176
+        },
+        {
+          "class": "crosswalk",
+          "confidence": 0.7481243014335632
+        },
+        {
+          "class": "cross_lane",
+          "confidence": 0.5413671731948853
+        }
+      ]
+    },
+    {
+      "stamp": 15.776,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.00763953518752002,
+      "linear": 0.0796944185924992,
+      "angular": -0.01145930278128003,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5389062762260437,
+      "odom_xy": [
+        0.6526791377996021,
+        -0.5181420674244879
+      ],
+      "detections": [
+        {
+          "class": "left_lane",
+          "confidence": 0.9290180206298828
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.9016847014427185
+        },
+        {
+          "class": "crosswalk",
+          "confidence": 0.8361446857452393
+        }
+      ]
+    },
+    {
+      "stamp": 15.976,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.006172530053671786,
+      "linear": 0.07975309879785314,
+      "angular": -0.009258795080507679,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5385398268699646,
+      "odom_xy": [
+        0.6525127057305422,
+        -0.5340806897775454
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8768215775489807
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8735052347183228
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8636004328727722
+        }
+      ]
+    },
+    {
+      "stamp": 16.172,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.005345024160379394,
+      "linear": 0.07978619903358483,
+      "angular": -0.008017536240569091,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5276784896850586,
+      "odom_xy": [
+        0.6522467976353901,
+        -0.5548138464493694
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.9232147336006165
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8869448304176331
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8532111048698425
+        }
+      ]
+    },
+    {
+      "stamp": 16.304,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.002446508033497488,
+      "linear": 0.0799021396786601,
+      "angular": -0.0036697620502462317,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5274865627288818,
+      "odom_xy": [
+        0.6520835789070947,
+        -0.5659820590900043
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.9436498880386353
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.881874680519104
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8661068081855774
+        }
+      ]
+    },
+    {
+      "stamp": 16.404,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.002209724359453975,
+      "linear": 0.07991161102562185,
+      "angular": -0.0033145865391809625,
+      "guard_stop": false,
+      "forward_clearance_m": 0.536710262298584,
+      "odom_xy": [
+        0.6519853463071815,
+        -0.5723720839392568
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.9380584955215454
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8632946014404297
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8389517664909363
+        }
+      ]
+    },
+    {
+      "stamp": 16.536,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.0016729898524790962,
+      "linear": 0.07993308040590084,
+      "angular": -0.0025094847787186444,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5273774266242981,
+      "odom_xy": [
+        0.6517833869552094,
+        -0.5851560811934675
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.9023266434669495
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.8117201924324036
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7844356298446655
+        }
+      ]
+    },
+    {
+      "stamp": 16.668,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.002396245294037326,
+      "linear": 0.0799041501882385,
+      "angular": -0.0035943679410559894,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5326493978500366,
+      "odom_xy": [
+        0.6516800165823108,
+        -0.5915498061734018
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8889080882072449
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.6263420581817627
+        },
+        {
+          "class": "right_lane",
+          "confidence": 0.6246719360351562
+        }
+      ]
+    },
+    {
+      "stamp": 16.768,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5261040329933167,
+      "odom_xy": [
+        0.6515487568041548,
+        -0.5995397216491791
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.9087393879890442
+        }
+      ]
+    },
+    {
+      "stamp": 16.932,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5244882702827454,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 17.164,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5183382630348206,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 17.296,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5260270833969116,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 17.46,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5344370007514954,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 17.692,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.532096266746521,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 17.988,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.531825065612793,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 18.12,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5329722762107849,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 18.384,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5147296190261841,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 18.58,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5191936492919922,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 18.712,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5239135026931763,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    },
+    {
+      "stamp": 18.976,
+      "valid": false,
+      "mode": "LOST",
+      "steer": 0.002396245294037326,
+      "linear": 0.0,
+      "angular": 0.0,
+      "guard_stop": true,
+      "forward_clearance_m": 0.5326467752456665,
+      "odom_xy": [
+        0.6514982105998604,
+        -0.6025739330730268
+      ],
+      "detections": [
+        {
+          "class": "crosswalk",
+          "confidence": 0.8905586004257202
+        }
+      ]
+    }
+  ]
+}

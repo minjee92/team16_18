@@ -1,0 +1,95 @@
+[
+  {
+    "trial": "compare-baseline",
+    "camera": [
+      1280,
+      720
+    ],
+    "left": false,
+    "right": false,
+    "crosswalk_area": 0.0,
+    "junction_width": 0.0,
+    "detections": [
+      {
+        "name": "crosswalk",
+        "confidence": 0.895367443561554
+      }
+    ]
+  },
+  {
+    "trial": "compare-heading",
+    "camera": [
+      1280,
+      720
+    ],
+    "left": false,
+    "right": false,
+    "crosswalk_area": 0.0,
+    "junction_width": 0.0,
+    "detections": [
+      {
+        "name": "crosswalk",
+        "confidence": 0.8811265826225281
+      }
+    ]
+  },
+  {
+    "trial": "compare-far",
+    "camera": [
+      1280,
+      720
+    ],
+    "left": false,
+    "right": false,
+    "crosswalk_area": 0.0,
+    "junction_width": 0.0,
+    "detections": [
+      {
+        "name": "crosswalk",
+        "confidence": 0.9087393879890442
+      }
+    ]
+  },
+  {
+    "trial": "compare-camera-4x3",
+    "camera": [
+      640,
+      480
+    ],
+    "left": false,
+    "right": false,
+    "crosswalk_area": 0.0,
+    "junction_width": 0.0,
+    "detections": [
+      {
+        "name": "crosswalk",
+        "confidence": 0.8781982064247131
+      }
+    ]
+  },
+  {
+    "trial": "compare-camera-tilt20",
+    "camera": [
+      640,
+      480
+    ],
+    "left": false,
+    "right": false,
+    "crosswalk_area": 0.0,
+    "junction_width": 0.990625,
+    "detections": [
+      {
+        "name": "crosswalk",
+        "confidence": 0.9137952923774719
+      },
+      {
+        "name": "cross_lane",
+        "confidence": 0.5480762124061584
+      },
+      {
+        "name": "cross_lane",
+        "confidence": 0.44529491662979126
+      }
+    ]
+  }
+]

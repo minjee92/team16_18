@@ -53,7 +53,7 @@ sudo apt-get install ros-jazzy-ros-gz ros-jazzy-gz-ros2-control \
   python3-numpy python3-yaml python3-pil
 source /opt/ros/jazzy/setup.bash
 cd <workspace>
-CMAKE_BUILD_PARALLEL_LEVEL=2 colcon build --executor sequential \
+CMAKE_BUILD_PARALLEL_LEVEL=2 colcon build --base-paths src --executor sequential \
   --packages-select pinky_description pinky_gz_sim pinky_fms_bringup pinky_fms_sim \
   --cmake-args -DBUILD_TESTING=OFF
 source install/setup.bash
@@ -106,7 +106,7 @@ Gazebo 영상은 이미 정방향이므로 실물 카메라의 180도 회전은 
 sudo apt-get install python3-venv
 cd <workspace>
 source /opt/ros/jazzy/setup.bash
-colcon build --executor sequential --packages-select pinky_interfaces pinky_autonomous
+colcon build --base-paths src --executor sequential --packages-select pinky_interfaces pinky_autonomous
 source install/setup.bash
 python3 -m venv --system-site-packages /tmp/pinky-yolo-venv
 source /tmp/pinky-yolo-venv/bin/activate
@@ -156,3 +156,10 @@ NCNN은 저장된 영상 추론만 검증했다. 전체 코스 완주, 교차로
 후속 90초 주행에서는 약 1.19m 진행 후 차선 유실로 정지해 완주하지 못했다.
 횡단보도·복귀의 제어된 입력 검사 5개는 통과했으며, 자세한 제한과 기록은
 [후속 검증](docs/validation/extended/README.md)을 참고한다.
+
+## 차선 유실 후속 진단
+
+[설정별 비교·공식 카메라 미션 시험](docs/validation/diagnosis/README.md)을 추가했다.
+공식 카메라 1280×720 / 8°를 유지한다. `--heading-gain`, `--far-fallback`은 비교 옵션이며
+`--mission-states`는 원본 미션 메서드를 odom·전방 LiDAR로 검사하는 선택 모드다.
+2초 연속 차선 유실은 결과를 저장한 뒤 실패 종료한다. 전체 코스 완주 판정은 여전히 별도다.

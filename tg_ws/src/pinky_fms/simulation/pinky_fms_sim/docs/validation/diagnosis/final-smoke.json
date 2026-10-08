@@ -1,0 +1,768 @@
+{
+  "mode": "basic_lane_tracking",
+  "drive_enabled": true,
+  "frames": 28,
+  "valid_frames": 28,
+  "tracker_modes": {
+    "BOTH": 18,
+    "SINGLE": 10
+  },
+  "guard_stops": 0,
+  "displacement_m": 0.3070555313730514,
+  "model": "best.pt",
+  "termination": "duration",
+  "heading_gain": 0.0,
+  "far_fallback": false,
+  "camera_size": [
+    1280,
+    720
+  ],
+  "path_length_m": 0.30707527951004415,
+  "algorithm": "pinky_autonomous.LaneTracker + AutonomousDriveNode._compute_command",
+  "history": [
+    {
+      "stamp": 2.08,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.04594296874999999,
+      "linear": 0.07816228125,
+      "angular": 0.068914453125,
+      "guard_stop": false,
+      "forward_clearance_m": 0.35820820927619934,
+      "odom_xy": [
+        -1.1591959392195124e-18,
+        3.071897251141505e-35
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9166036248207092
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8028000593185425
+        }
+      ]
+    },
+    {
+      "stamp": 2.18,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.04595699951171875,
+      "linear": 0.07816172001953124,
+      "angular": 0.06893549926757812,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3599638342857361,
+      "odom_xy": [
+        0.01300772055407825,
+        7.65423968064462e-05
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9073219895362854
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7508242726325989
+        }
+      ]
+    },
+    {
+      "stamp": 2.344,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.04332156426323787,
+      "linear": 0.07826713742947049,
+      "angular": 0.06498234639485681,
+      "guard_stop": false,
+      "forward_clearance_m": 0.36332157254219055,
+      "odom_xy": [
+        0.020822991362956834,
+        0.0001943562768283923
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8889390826225281
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8646398782730103
+        }
+      ]
+    },
+    {
+      "stamp": 2.508,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.037019600355360165,
+      "linear": 0.0785192159857856,
+      "angular": 0.055529400533040243,
+      "guard_stop": false,
+      "forward_clearance_m": 0.37540629506111145,
+      "odom_xy": [
+        0.02864656436070887,
+        0.00036505176009946115
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.938279390335083
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.9008312225341797
+        }
+      ]
+    },
+    {
+      "stamp": 2.608,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.028624183709038555,
+      "linear": 0.07885503265163846,
+      "angular": 0.042936275563557835,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3856331706047058,
+      "odom_xy": [
+        0.0364923840591656,
+        0.0005844403352100985
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9388605356216431
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8446940779685974
+        }
+      ]
+    },
+    {
+      "stamp": 2.74,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.020531991006808803,
+      "linear": 0.07917872035972766,
+      "angular": 0.030797986510213204,
+      "guard_stop": false,
+      "forward_clearance_m": 0.3916310966014862,
+      "odom_xy": [
+        0.044372257880348424,
+        0.0008441929811014313
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9496336579322815
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8862823247909546
+        }
+      ]
+    },
+    {
+      "stamp": 2.872,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.014032318656209311,
+      "linear": 0.07943870725375163,
+      "angular": 0.021048477984313967,
+      "guard_stop": false,
+      "forward_clearance_m": 0.39741018414497375,
+      "odom_xy": [
+        0.052280886496752506,
+        0.001135302198880082
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9442934393882751
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8667577505111694
+        }
+      ]
+    },
+    {
+      "stamp": 2.972,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.008816936699293343,
+      "linear": 0.07964732253202826,
+      "angular": 0.013225405048940014,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4078499376773834,
+      "odom_xy": [
+        0.060210194803121606,
+        0.0014499648503630688
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.92664635181427
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7539387345314026
+        }
+      ]
+    },
+    {
+      "stamp": 3.104,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.004977686695551915,
+      "linear": 0.07980089253217792,
+      "angular": 0.007466530043327872,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4205497205257416,
+      "odom_xy": [
+        0.07453238812556058,
+        0.0020521113618749455
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9273180365562439
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7889901399612427
+        }
+      ]
+    },
+    {
+      "stamp": 3.204,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": -0.0021974394722071894,
+      "linear": 0.07991210242111171,
+      "angular": 0.0032961592083107843,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4289669394493103,
+      "odom_xy": [
+        0.08409563602683072,
+        0.0024710794817904076
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9211393594741821
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8259394764900208
+        }
+      ]
+    },
+    {
+      "stamp": 3.368,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.00034714120521287277,
+      "linear": 0.07998611435179148,
+      "angular": -0.0005207118078193091,
+      "guard_stop": false,
+      "forward_clearance_m": 0.43800783157348633,
+      "odom_xy": [
+        0.09367516854205006,
+        0.0028972478473223077
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9403109550476074
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7439512014389038
+        }
+      ]
+    },
+    {
+      "stamp": 3.5,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.0026853923615638474,
+      "linear": 0.07989258430553745,
+      "angular": -0.004028088542345772,
+      "guard_stop": false,
+      "forward_clearance_m": 0.44848161935806274,
+      "odom_xy": [
+        0.10166431200972911,
+        0.003254590839728335
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9319562315940857
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5626388788223267
+        }
+      ]
+    },
+    {
+      "stamp": 3.632,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.004816642014024736,
+      "linear": 0.07980733431943901,
+      "angular": -0.0072249630210371035,
+      "guard_stop": false,
+      "forward_clearance_m": 0.46234187483787537,
+      "odom_xy": [
+        0.11603231766624231,
+        0.0038925395972609503
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8988884687423706
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7126754522323608
+        }
+      ]
+    },
+    {
+      "stamp": 3.7960000000000003,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.006471698984415731,
+      "linear": 0.07974113204062337,
+      "angular": -0.009707548476623596,
+      "guard_stop": false,
+      "forward_clearance_m": 0.47106337547302246,
+      "odom_xy": [
+        0.12560077652504129,
+        0.004310014761650115
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9247543811798096
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.6536285281181335
+        }
+      ]
+    },
+    {
+      "stamp": 4.192,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.008146610172755244,
+      "linear": 0.07967413559308979,
+      "angular": -0.012219915259132866,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5097137689590454,
+      "odom_xy": [
+        0.15906445587689347,
+        0.005688186493606063
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9397362470626831
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5769199132919312
+        }
+      ]
+    },
+    {
+      "stamp": 4.424,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.009527267557034917,
+      "linear": 0.07961890929771862,
+      "angular": -0.014290901335552376,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4902677834033966,
+      "odom_xy": [
+        0.17976643363333106,
+        0.00646658422709786
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9347053170204163
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5396900177001953
+        }
+      ]
+    },
+    {
+      "stamp": 4.588,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.01046631893898546,
+      "linear": 0.07958134724244058,
+      "angular": -0.015699478408478188,
+      "guard_stop": false,
+      "forward_clearance_m": 0.49496468901634216,
+      "odom_xy": [
+        0.189315021901363,
+        0.0068023211700613566
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9329661130905151
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.6168453097343445
+        }
+      ]
+    },
+    {
+      "stamp": 4.688,
+      "valid": true,
+      "mode": "BOTH",
+      "steer": 0.010721893728570691,
+      "linear": 0.07957112425085718,
+      "angular": -0.016082840592856036,
+      "guard_stop": false,
+      "forward_clearance_m": 0.49642080068588257,
+      "odom_xy": [
+        0.19726883831097158,
+        0.007068950551698876
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9288814067840576
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.5189012885093689
+        }
+      ]
+    },
+    {
+      "stamp": 4.788,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.004515247853651094,
+      "linear": 0.07981939008585397,
+      "angular": 0.006772871780476641,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4823484718799591,
+      "odom_xy": [
+        0.20522218012223906,
+        0.0073229861461498605
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9331852197647095
+        }
+      ]
+    },
+    {
+      "stamp": 4.952,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.019284108210262024,
+      "linear": 0.07922863567158953,
+      "angular": 0.028926162315393036,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4848340153694153,
+      "odom_xy": [
+        0.21958152086799193,
+        0.007776361492748354
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9341821074485779
+        }
+      ]
+    },
+    {
+      "stamp": 5.084,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.03403920121307861,
+      "linear": 0.07863843195147686,
+      "angular": 0.051058801819617916,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4838065803050995,
+      "odom_xy": [
+        0.22751183739902694,
+        0.008039362753219625
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9272932410240173
+        }
+      ]
+    },
+    {
+      "stamp": 5.184,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.030545940051423578,
+      "linear": 0.07877816239794305,
+      "angular": 0.045818910077135365,
+      "guard_stop": false,
+      "forward_clearance_m": 0.4861232042312622,
+      "odom_xy": [
+        0.236953728985151,
+        0.0083900625886299
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9260557293891907
+        }
+      ]
+    },
+    {
+      "stamp": 5.316,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.024451222987649252,
+      "linear": 0.07902195108049404,
+      "angular": 0.03667683448147388,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5000956058502197,
+      "odom_xy": [
+        0.24954326844172567,
+        0.00894315189443483
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9130557775497437
+        }
+      ]
+    },
+    {
+      "stamp": 5.448,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.014907088250461407,
+      "linear": 0.07940371646998155,
+      "angular": 0.02236063237569211,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5123798251152039,
+      "odom_xy": [
+        0.25901315686231324,
+        0.009415301024149562
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9181692004203796
+        }
+      ]
+    },
+    {
+      "stamp": 5.548,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": -0.0055874841140272895,
+      "linear": 0.07977650063543891,
+      "angular": 0.008381226171040933,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5238398909568787,
+      "odom_xy": [
+        0.2669376675058734,
+        0.009838235114422247
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9200202226638794
+        }
+      ]
+    },
+    {
+      "stamp": 5.68,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.0008867324642657746,
+      "linear": 0.07996453070142936,
+      "angular": -0.0013300986963986619,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5241673588752747,
+      "odom_xy": [
+        0.274898766172055,
+        0.010276925800156388
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9019536375999451
+        }
+      ]
+    },
+    {
+      "stamp": 5.844,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.0036918310818722573,
+      "linear": 0.07985232675672511,
+      "angular": -0.005537746622808386,
+      "guard_stop": false,
+      "forward_clearance_m": 0.525856077671051,
+      "odom_xy": [
+        0.29565456852305827,
+        0.011429325825364666
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8729645609855652
+        }
+      ]
+    },
+    {
+      "stamp": 6.008,
+      "valid": true,
+      "mode": "SINGLE",
+      "steer": 0.005777473610827085,
+      "linear": 0.07976890105556692,
+      "angular": -0.008666210416240628,
+      "guard_stop": false,
+      "forward_clearance_m": 0.5097689628601074,
+      "odom_xy": [
+        0.3068192377319272,
+        0.012043865840588053
+      ],
+      "state": "driving",
+      "return_phase": null,
+      "crosswalk_area": 0.0,
+      "junction_width": 0.0,
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8973714709281921
+        }
+      ]
+    }
+  ]
+}
