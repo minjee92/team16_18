@@ -944,7 +944,9 @@ window.openCamModal = function (id) {
     const r = robots[id];
     document.getElementById('cam-robot-name').innerText = r ? displayName(id) : id;
     const img = document.getElementById('cam-img'), ph = document.getElementById('cam-placeholder');
-    const status = document.getElementById('cam-status'), fpsEl = document.getElementById('cam-fps');
+    const status = document.getElementById('cam-status'), fpsEl = document.getElementById('cam-fps'), liveEl = document.getElementById('cam-live');
+    const liveOff = () => { liveEl.classList.add('hidden'); liveEl.classList.remove('inline-flex'); };
+    liveOff();
     img.classList.add('hidden'); ph.classList.remove('hidden'); fpsEl.textContent = 'FPS: --';
     status.textContent = '영상 연결 중…';
     openModal('cam-modal', 'cam-modal-content');
@@ -956,10 +958,12 @@ window.openCamModal = function (id) {
         last = Date.now(); times.push(last); while (times.length > 10) times.shift();
         img.src = 'data:image/jpeg;base64,' + m.data;
         img.classList.remove('hidden'); ph.classList.add('hidden'); status.textContent = '';
+        liveEl.classList.remove('hidden'); liveEl.classList.add('inline-flex');
         if (times.length > 1) fpsEl.textContent = `FPS: ${((times.length - 1) * 1000 / (times[times.length - 1] - times[0])).toFixed(1)}`;
     });
     camTimer = setInterval(() => {                   // 영상이 끊기거나 처음부터 안 오면 이유를 보여 준다
         if (Date.now() - last < 3000) return;
+        liveOff();
         img.classList.add('hidden'); ph.classList.remove('hidden'); fpsEl.textContent = 'FPS: --';
         status.textContent = !r.stack
             ? '영상은 미션 스택(Nav2 또는 Lane Following)이 켜져 있을 때 나옵니다 — 미션을 선택하세요'

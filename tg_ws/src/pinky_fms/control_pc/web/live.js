@@ -153,10 +153,10 @@ function buildCams() {
         const el = document.createElement('div');
         el.className = 'cam'; el.style.setProperty('--c', r.color);
         el.innerHTML = `<div class="cam-head"><b>${displayName(r.id)}</b><span class="muted">로봇 시점</span><span class="st">--</span></div>
-            <div class="cam-body"><img alt="${displayName(r.id)} 주행 영상"><span class="fps">FPS: --</span><span class="msg">영상 연결 중…</span></div>`;
+            <div class="cam-body"><img alt="${displayName(r.id)} 주행 영상"><span class="fps">FPS: --</span><span class="live" title="실시간 영상 수신 중"><i></i>LIVE</span><span class="msg">영상 연결 중…</span></div>`;
         el.onclick = () => { selected = r.id; markSelected(); draw(); };
         box.appendChild(el);
-        r.cam = { el, img: el.querySelector('img'), msg: el.querySelector('.msg'), fps: el.querySelector('.fps'), st: el.querySelector('.st'), times: [], last: 0 };
+        r.cam = { el, img: el.querySelector('img'), msg: el.querySelector('.msg'), fps: el.querySelector('.fps'), live: el.querySelector('.live'), st: el.querySelector('.st'), times: [], last: 0 };
     });
     markSelected();
 }
@@ -173,6 +173,7 @@ setInterval(() => {      // 영상이 안 오면 이유를 보여 준다
         if (!r.cam) return;
         r.cam.st.textContent = stateText(r);
         if (Date.now() - r.cam.last < 3000) return;
+        r.cam.live.classList.remove('on');
         r.cam.img.style.display = 'none'; r.cam.fps.textContent = 'FPS: --';
         const online = r.status && Date.now() - r.statusAt < 5000 && r.status.state !== 'OFFLINE';
         r.cam.msg.textContent = !rosOnline ? 'rosbridge(9090)에 연결되지 않았습니다'
@@ -203,7 +204,7 @@ function subscribe() {
             const c = r.cam;
             c.last = Date.now(); c.times.push(c.last); while (c.times.length > 10) c.times.shift();
             c.img.src = 'data:image/jpeg;base64,' + m.data;
-            c.img.style.display = 'block'; c.msg.textContent = '';
+            c.img.style.display = 'block'; c.msg.textContent = ''; c.live.classList.add('on');
             if (c.times.length > 1) c.fps.textContent = `FPS: ${((c.times.length - 1) * 1000 / (c.times[c.times.length - 1] - c.times[0])).toFixed(1)}`;
         }, { throttle_rate: 150, queue_length: 1 });
     });

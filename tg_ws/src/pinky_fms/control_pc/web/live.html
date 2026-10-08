@@ -32,6 +32,10 @@
         .cam-body img { max-width: 100%; max-height: 100%; object-fit: contain; display: none; }
         .cam-body .msg { position: absolute; padding: 0 16px; text-align: center; color: var(--muted); font-size: 12px; }
         .cam-body .fps { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.6); color: var(--ok); font: 10px monospace; padding: 2px 6px; border-radius: 4px; }
+        .live { position: absolute; top: 6px; right: 6px; display: none; align-items: center; gap: 5px; background: #dc2626; color: #fff; font: 700 10px Inter, sans-serif; letter-spacing: .08em; padding: 2px 7px; border-radius: 4px; }
+        .live.on { display: inline-flex; }
+        .live i { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: blink 1s steps(2, start) infinite; }
+        @keyframes blink { to { visibility: hidden; } }
         @media (max-width: 760px) { main { grid-template-columns: 1fr; grid-template-rows: 50vh auto; } }
     </style>
 </head>
