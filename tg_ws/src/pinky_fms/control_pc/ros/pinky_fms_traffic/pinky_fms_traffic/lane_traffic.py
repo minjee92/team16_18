@@ -117,6 +117,7 @@ class LaneTraffic(Node):
         self.declare_parameter('junction_radius', 0.6)  # 갈림길 중심에서 이 안으로 다가오는 비우선 로봇은 hold
         self.declare_parameter('junction_at', 0.35)     # 갈림길에 '정지한' 로봇으로 볼 중심 거리
         self.declare_parameter('junction_exit', 0.4)    # 우선 로봇이 정지 자리에서 이만큼 빠져나가면 대기 로봇 resume
+        self.declare_parameter('junction_exit_radius', 0.75)  # 우선 로봇의 출구 차선 위 로봇은 이 안이면 hold 대신 바로 양보 (2026-10-08 23:44 실물 교착)
         self.declare_parameter('junction_busy_wait', 2.0)  # 우선 로봇이 대기 로봇 때문에 'junction busy' 로 이 시간 넘게 서 있으면 대기 로봇 양보
         gp = lambda n: self.get_parameter(n).value
         self.meet_dist, self.deadlock_dist = gp('meet_dist'), gp('deadlock_dist')
@@ -125,6 +126,7 @@ class LaneTraffic(Node):
         self.pass_timeout, self.rejoin_timeout, self.cooldown = gp('pass_timeout'), gp('rejoin_timeout'), gp('cooldown')
         self.jn_radius, self.jn_at, self.jn_exit, self.jn_busy_wait = (gp('junction_radius'), gp('junction_at'),
                                                                       gp('junction_exit'), gp('junction_busy_wait'))
+        self.jn_exit_radius = gp('junction_exit_radius')
         self.geo = None
         if gp('lanes_yaml') and gp('floor_yaml'):
             try:
@@ -135,7 +137,7 @@ class LaneTraffic(Node):
             self.get_logger().warn('lanes_yaml/floor_yaml 이 없어 차선 마주침 조정 꺼짐')
         # 갈림길: {'c': (x, y), 'owner': LaneRobot|None, 'owner_pose', 'held': set(LaneRobot), 'busy_t'}
         self.junctions = [] if self.geo is None else [
-            {'c': c, 'owner': None, 'owner_pose': None, 'held': set(), 'busy_t': None} for c in self.geo.find_junctions()]
+            {'c': c, 'owner': None, 'owner_pose': None, 'held': set(), 'busy_t': None, 'exit': None} for c in self.geo.find_junctions()]
         if self.geo is not None:
             self.get_logger().info(f'갈림길 {len(self.junctions)}곳: ' + ', '.join(f'({j["c"][0]:.2f}, {j["c"][1]:.2f})' for j in self.junctions))
         self.robots = {}
@@ -258,7 +260,7 @@ class LaneTraffic(Node):
                     for r in j['held']:
                         if not self._busy(r):
                             self._release(r, 'junction')
-                    j.update(owner=None, owner_pose=None, held=set(), busy_t=None)
+                    j.update(owner=None, owner_pose=None, held=set(), busy_t=None, exit=None)
                     o = None
             # 우선 로봇 정하기: 갈림길에 정지한 로봇 중 먼저 선 쪽
             if o is None:
@@ -266,9 +268,29 @@ class LaneTraffic(Node):
                       and not self._busy(r) and self._jn_dist(r, j) <= self.jn_at and self._jn_eligible(r, j)]
                 if at:
                     o = min(at, key=lambda r: r.jn_since)
-                    j.update(owner=o, owner_pose=o.pose, busy_t=None)
+                    j.update(owner=o, owner_pose=o.pose, busy_t=None, exit=None)
                     self.get_logger().info(f'🚥 갈림길 ({j["c"][0]:.2f},{j["c"][1]:.2f}) 우선: {o.id} (먼저 정지)')
             if o is None:
+                continue
+            # 우선 로봇이 고른 출구 (detail 'junction check (left)' 등) → 출구 차선 방향 (그때의 로봇 방향 기준)
+            if j['exit'] is None and o.pose is not None:
+                m = re.search(r'\((left|right|straight|back)\)', str(o.st.get('detail', '')))
+                if m:
+                    off = {'left': math.pi / 2, 'right': -math.pi / 2, 'straight': 0.0, 'back': math.pi}[m.group(1)]
+                    j['exit'] = (m.group(1), o.pose[2] + off)
+                    self.get_logger().info(f'🚥 갈림길 {o.id} 출구: {m.group(1)}')
+            # 출구 차선 위 로봇: 우선 로봇이 곧 그쪽으로 나간다 → 세우면 교착 (23:44 실물) → hold 대신 바로 양보
+            if j['exit'] is not None:
+                for r in list(self.robots.values()):
+                    if r is o or self._busy(r) or not r.active(now) or r.traffic not in (None, 'HOLD'):
+                        continue
+                    if not self._on_exit(r, j) or not self._jn_eligible(r, j):
+                        continue
+                    j['held'].discard(r)
+                    self._junction_yield(j, o, r, 'on owner exit')
+                    if self._busy(o):
+                        break
+            if self._busy(o):
                 continue
             # 나중에 다가오는 로봇 hold (갈림길 쪽으로 오는 중이거나 갈림길에 서 있는 로봇)
             for r in self.robots.values():
@@ -283,21 +305,42 @@ class LaneTraffic(Node):
                     self.get_logger().info(f'✋ {r.id} 갈림길 대기 ({d:.2f} m): {o.id} 가 먼저 정지')
                     self._send(r, 'hold')
             j['held'] = {r for r in j['held'] if r.active(now) and not self._busy(r)}
-            # 교착: 우선 로봇이 대기 로봇 때문에 출구 확인을 못 함 → 대기 로봇을 비켜서게
-            busy = str(o.st.get('detail', '')).startswith('junction busy')
+            # 교착: 우선 로봇이 대기 로봇 때문에 출구 확인을 못 하거나(junction busy), 출구로 나가다 대기 로봇 앞에서
+            # 막힘(obstacle ahead, 2026-10-08 23:44 실물) → 대기 로봇을 비켜서게
+            det = str(o.st.get('detail', ''))
+            ahead = [r for r in j['held'] if self._in_front(o, r)] if det == 'obstacle ahead' else []
+            busy = det.startswith('junction busy') or bool(ahead)
             j['busy_t'] = (j['busy_t'] or now) if busy else None
             if busy and now - j['busy_t'] >= self.jn_busy_wait and j['held']:
-                y = min(j['held'], key=lambda r: math.hypot(r.pose[0] - o.pose[0], r.pose[1] - o.pose[1]))
+                y = (ahead or sorted(j['held'], key=lambda r: math.hypot(r.pose[0] - o.pose[0], r.pose[1] - o.pose[1])))[0]
                 # 벽 확인은 로봇끼리가 아니라 각자와 갈림길 중심 사이로 (두 로봇을 잇는 직선은 칸막이 끝을 스칠 수 있다)
                 if (math.hypot(y.pose[0] - o.pose[0], y.pose[1] - o.pose[1]) <= 1.0
                         and self._jn_eligible(y, j) and self._jn_eligible(o, j)):
                     j['held'].discard(y)
                     j['busy_t'] = None
-                    e = Encounter(o, y, 'junction busy')
-                    e.force_priority = o
-                    self.encounters.append(e)
-                    self.get_logger().info(f'⚠️ 갈림길 교착: {o.id} 출구를 {y.id} 가 막음 → {y.id} 양보')
-                    self._send(o, 'hold')
+                    self._junction_yield(j, o, y, det)
+
+    def _on_exit(self, r, j):
+        """r 이 우선 로봇이 고른 출구 차선 위(갈림길 중심에서 출구 방향 ±45°, junction_exit_radius 안)에서 갈림길 쪽으로
+        오고 있는가. 같은 출구로 앞서 빠져나가는(멀어지는) 로봇은 막는 로봇이 아니다 (follow 시나리오)."""
+        dx, dy = r.pose[0] - j['c'][0], r.pose[1] - j['c'][1]
+        d = math.hypot(dx, dy)
+        toward = -dx * math.cos(r.pose[2]) - dy * math.sin(r.pose[2]) > 0
+        return (0.05 < d <= self.jn_exit_radius and toward
+                and ang_diff(math.atan2(dy, dx), j['exit'][1]) <= math.radians(45))
+
+    def _in_front(self, o, r, ahead=0.45, half=0.20):
+        dx, dy = r.pose[0] - o.pose[0], r.pose[1] - o.pose[1]
+        fx = dx * math.cos(o.pose[2]) + dy * math.sin(o.pose[2])
+        fy = -dx * math.sin(o.pose[2]) + dy * math.cos(o.pose[2])
+        return 0.0 < fx <= ahead and abs(fy) <= half
+
+    def _junction_yield(self, j, o, y, why):
+        e = Encounter(o, y, f'junction: {why}')
+        e.force_priority = o
+        self.encounters.append(e)
+        self.get_logger().info(f'⚠️ 갈림길 ({j["c"][0]:.2f},{j["c"][1]:.2f}): {y.id} 가 {o.id} 출구를 막음 ({why}) → {y.id} 양보')
+        self._send(o, 'hold')
 
     def _detect(self, now):
         live = [r for r in self.robots.values() if r.active(now) and r.traffic is None and not self._busy(r)]
@@ -518,7 +561,7 @@ class LaneTraffic(Node):
             self.get_logger().warn(f'🛑 GLOBAL E-STOP: 차선 마주침 조정 {len(self.encounters)}건 취소')
         self.encounters.clear()
         for j in self.junctions:
-            j.update(owner=None, owner_pose=None, held=set(), busy_t=None)
+            j.update(owner=None, owner_pose=None, held=set(), busy_t=None, exit=None)
         for r in self.robots.values():
             r.cmd = None                # 로봇 차선 노드는 E-STOP 을 직접 받아 미션을 끝낸다
 
@@ -531,6 +574,7 @@ class LaneTraffic(Node):
             {'enabled': self.geo is not None, 'encounters': [e.summary() for e in self.encounters], 'robots': robots,
              'alerts': self._alerts(now) if self.geo is not None else [],
              'junctions': [{'c': [round(v, 2) for v in j['c']], 'owner': j['owner'].id if j['owner'] else None,
+                            'exit': j['exit'][0] if j['exit'] else None,
                             'held': sorted(r.id for r in j['held'])} for j in self.junctions]})))
 
 

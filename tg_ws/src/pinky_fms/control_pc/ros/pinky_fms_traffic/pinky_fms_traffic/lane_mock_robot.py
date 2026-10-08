@@ -176,15 +176,26 @@ class LaneMockRobot(Node):
         busy = any(np.min(np.hypot(ahead[:, 0] - p[0], ahead[:, 1] - p[1])) <= 0.20 for p in self.peers.values()) if len(ahead) else False
         if busy:
             self.jn_clear_t = None
-            self.detail = 'junction busy · robot'
+            self.detail = f'junction busy · robot ({self._exit_dir()})'
             return True
         self.jn_clear_t = self.jn_clear_t or now
         if now - self.jn_clear_t < 1.0:
-            self.detail = 'junction check'
+            self.detail = f'junction check ({self._exit_dir()})'
             return True
         self.jn_done.add(self.jn)
         self.jn = None
         return False
+
+    def _exit_dir(self):
+        """갈림길 지나 0.35 m 앞 경로 방향을 지금 방향 기준 left/right/straight/back 으로 (실제 노드의 choose_exit 흉내)"""
+        c = self.junctions[self.jn]
+        d = np.hypot(self.path[:, 0] - c[0], self.path[:, 1] - c[1])
+        far = np.nonzero((d >= 0.35) & (np.arange(len(self.path)) > self.i))[0]
+        if not len(far):
+            return 'straight'
+        q = self.path[far[0]]
+        rel = wrap(math.atan2(q[1] - c[1], q[0] - c[0]) - self.yaw)
+        return 'straight' if abs(rel) < math.radians(45) else 'back' if abs(rel) > math.radians(135) else 'left' if rel > 0 else 'right'
 
     def _traffic_step(self, now):
         tr = self.traffic
