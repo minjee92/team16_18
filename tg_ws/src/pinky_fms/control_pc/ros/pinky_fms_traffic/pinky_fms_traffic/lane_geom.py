@@ -31,6 +31,36 @@ def seg_point_dist(a, b, p):
     return np.hypot(*(a + ab * t[:, None] - p).T)
 
 
+# 로봇 노드의 비켜서기·복귀 이동 중 안전 판정(pinky-96/main brain): 라이다 원시값 앞 ±0.08 m, 앞면(중심+0.07)에서 0.06 m 안이면 정지.
+# 상대 로봇 몸체 반경 약 0.095 m 와 여유 0.02 를 더한 '정면 창' 에 상대 중심이 들어오면 이동이 막힌다 (실물 10-09 00:17·00:19).
+FRONT_AHEAD = 0.07 + 0.06 + 0.095 + 0.02
+FRONT_HALF = 0.08 + 0.095 + 0.02
+
+
+def path_blocked(a, b, others, n=20):
+    """a→b 직선 이동(제자리 회전 후 직진) 중 다른 로봇(others 중심들)이 정면 창에 들어오는가. a, b: (2,) / (K,2) 가능.
+    반환: (K,) bool"""
+    a = np.atleast_2d(np.asarray(a, dtype=float))
+    b = np.atleast_2d(np.asarray(b, dtype=float))
+    if len(a) == 1 and len(b) > 1:
+        a = np.repeat(a, len(b), 0)
+    v = b - a
+    L = np.hypot(*v.T)
+    u = v / np.maximum(L, 1e-9)[:, None]
+    t = np.linspace(0.0, 1.0, n)
+    pts = a[:, None, :] + v[:, None, :] * t[None, :, None]           # (K, n, 2)
+    out = np.zeros(len(a), bool)
+    for o in others:
+        rel = np.asarray(o[:2], dtype=float)[None, None, :] - pts
+        fx = (rel * u[:, None, :]).sum(-1)
+        fy = rel[..., 1] * u[:, None, 0] - rel[..., 0] * u[:, None, 1]
+        # 남은 이동 거리보다 먼 앞쪽은 목표에 닿기 전에 멈추므로 상관없다
+        remain = (1.0 - t)[None, :] * L[:, None]
+        out |= ((fx > 0.0) & (fx <= np.minimum(FRONT_AHEAD, remain + FRONT_AHEAD - 0.06)) & (np.abs(fy) <= FRONT_HALF)
+                & (L[:, None] > 0.02)).any(1)
+    return out
+
+
 class LaneGeometry:
     def __init__(self, lanes_yaml, floor_yaml, res=0.02, center_clear=0.19, wall_margin=0.03, center_pref=0.23, pass_clear=0.065):
         # center_clear: 차선 중심선 ~ 비켜설 자리(로봇 중심) 최소 거리. 우선권 로봇은 차선 중심을 따라가며 앞 ±0.10 m 통로의
@@ -200,6 +230,11 @@ class LaneGeometry:
         cand, dc = cand[keep], dc[keep]
         if not len(cand):
             return None
+        # 이동 중 정면 창에 상대 몸체가 걸리면 로봇이 멈춘다 (실물 00:17·00:19 '앞이 3초 넘게 막힘')
+        keep = ~path_blocked(p, cand, [o])
+        cand, dc = cand[keep], dc[keep]
+        if not len(cand):
+            return None
         # 직선 경로 위의 벽 여유 (출발점 근처 BODY_HALF 는 로봇이 지금 서 있는 자리라 검사하지 않는다)
         n = 24
         t = np.linspace(0.0, 1.0, n)
@@ -236,7 +271,7 @@ def retreat_then_escape(ga, pose, other_xy, reach=0.6, max_straight=0.5, other_c
         q = cl[k]
         n = max(2, int(d[k] / (ga.res * 0.5)) + 1)
         pts = np.stack([np.linspace(p[0], q[0], n), np.linspace(p[1], q[1], n)], axis=1)
-        if (ga.floor.clearance_at(pts) < ga.pass_clear).any():
+        if (ga.floor.clearance_at(pts) < ga.pass_clear).any() or path_blocked(p, q, [o])[0]:
             continue
         found = ga.escape_for((q[0], q[1], pose[2]), o, max_dist=0.7)
         if found is not None:
@@ -251,7 +286,8 @@ def rejoin_point(ga, rejoin, from_xy, blockers, clear=0.35, skip=0.0, reach=1.2)
     skip: 원래 자리에서 이 거리 이상 떨어진 점만 (복귀가 막혀 다시 고를 때 더 멀리). 못 찾으면 None."""
     bl = [np.asarray(b[:2], dtype=float) for b in blockers if b is not None]
     r0 = np.asarray(rejoin[:2], dtype=float)
-    if skip <= 0.0 and all(np.hypot(*(r0 - b)) >= clear for b in bl):
+    f = np.asarray(from_xy, dtype=float)
+    if skip <= 0.0 and all(np.hypot(*(r0 - b)) >= clear for b in bl) and not path_blocked(f, r0, bl)[0]:
         return tuple(rejoin[:3])
     cl = ga.local_centerline(rejoin, reach)
     if not len(cl):
@@ -262,12 +298,11 @@ def rejoin_point(ga, rejoin, from_xy, blockers, clear=0.35, skip=0.0, reach=1.2)
     ok = (ahead > 0.0) & (d0 >= skip)
     for b in bl:
         ok &= np.hypot(*(cl - b).T) >= clear
-    f = np.asarray(from_xy, dtype=float)
     for k in np.argsort(np.where(ok, d0, np.inf)):
         if not ok[k]:
             break
         q = cl[k]
-        if ga.wall_between(f, q):
+        if ga.wall_between(f, q) or path_blocked(f, q, bl)[0]:
             continue
         # 차선 방향: 근처 중심선 점들의 주성분, 원래 진행 방향과 같은 쪽으로
         near = cl[np.hypot(*(cl - q).T) <= 0.08]

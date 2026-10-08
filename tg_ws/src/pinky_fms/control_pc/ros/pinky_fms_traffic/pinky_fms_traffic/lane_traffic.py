@@ -29,7 +29,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from .lane_geom import LaneGeometry, ang_diff, choose_yielder, headon, passed, rejoin_point, retreat_then_escape
+from .lane_geom import LaneGeometry, ang_diff, choose_yielder, headon, passed, path_blocked, rejoin_point, retreat_then_escape
 
 LANE_STATUS_RE = re.compile(r'^/([^/]+)/lane_status$')
 INACTIVE = ('ARRIVED', 'FAILED', 'IDLE')
@@ -484,7 +484,9 @@ class LaneTraffic(Node):
         elif e.phase == 'PASS':
             p = e.priority
             self._reyield_if_blocking(e, now)
-            if p.pose is not None and passed(p.pose, e.rejoin, self.pass_dist):
+            others = [o.pose for o in self.robots.values() if o is not e.yielder and o.fresh(now, 3.0) and o.pose]
+            ret_clear = e.yielder.pose is None or not path_blocked(e.yielder.pose[:2], e.rejoin[:2], others)[0]
+            if p.pose is not None and passed(p.pose, e.rejoin, self.pass_dist) and ret_clear:
                 why = '통과 완료'
             elif age > self.pass_timeout:
                 why = f'{self.pass_timeout:.0f}s 안에 통과 못 함'

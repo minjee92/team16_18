@@ -121,6 +121,16 @@ class LaneMockRobot(Node):
                 best = min(best, fx - 0.06 - 0.07)
         return best
 
+    def _move_block(self):
+        """비켜서기·복귀 중 안전 판정 (실제 노드와 같게): 라이다 원시값 앞 ±0.08 m, 앞면에서 0.06 m. 상대 몸체 반경 0.095 m"""
+        for p in self.peers.values():
+            dx, dy = p[0] - self.x, p[1] - self.y
+            fx = dx * math.cos(self.yaw) + dy * math.sin(self.yaw)
+            fy = -dx * math.sin(self.yaw) + dy * math.cos(self.yaw)
+            if fx > 0 and abs(fy) <= 0.08 + 0.095 and fx - 0.095 - 0.07 < 0.06:
+                return True
+        return False
+
     def _step(self):
         now = time.monotonic()
         for p in self.peers.values():           # 충돌 기록 (몸체 폭보다 가까움)
@@ -224,7 +234,7 @@ class LaneMockRobot(Node):
         if abs(err) > 0.25:
             self.yaw += max(-0.8 * DT, min(0.8 * DT, err))
             return
-        if self._front_block() < 0.06:
+        if self._move_block():
             self.blocked_t = self.blocked_t or now
             if now - self.blocked_t > 3.0:
                 self.traffic = 'YIELD_FAILED'
