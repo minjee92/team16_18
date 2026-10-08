@@ -144,8 +144,32 @@ class LaneGeometry:
         valid = np.hypot(tan[:, 0], tan[:, 1])[None] > 0.5
         return ((fx >= -BODY_HALF) & (fx <= ahead) & (np.abs(fy) <= half) & valid).any(1)
 
+    def find_junctions(self, ring=(0.14, 0.20), min_gap_deg=40.0, merge=0.2):
+        """차선 갈림길(세 갈래 이상) 중심 목록. 중심선 점마다 반경 ring 고리 위 중심선 점들의 방향을 묶어 갈래 수를 센다."""
+        rr, cc = np.nonzero(self.center)
+        pts = np.stack([self.floor.ox + (cc + 0.5) * self.res, self.floor.oy + (rr + 0.5) * self.res], axis=1)
+        hits = []
+        for p in pts:
+            d = np.hypot(*(pts - p).T)
+            rg = pts[(d >= ring[0]) & (d <= ring[1])]
+            if len(rg) < 3:
+                continue
+            a = np.sort(np.arctan2(rg[:, 1] - p[1], rg[:, 0] - p[0]))
+            gaps = np.diff(np.concatenate([a, [a[0] + 2 * np.pi]]))
+            if (gaps > math.radians(min_gap_deg)).sum() >= 3:
+                hits.append(p)
+        groups = []
+        for p in hits:
+            for gr in groups:
+                if np.hypot(*(np.mean(gr, 0) - p)) < merge:
+                    gr.append(p)
+                    break
+            else:
+                groups.append([p])
+        return [tuple(float(v) for v in np.mean(gr, 0)) for gr in groups]
+
     # ---------- 비켜설 자리 ----------
-    def escape_for(self, pose, other_xy, max_dist=0.45, other_clear=0.22, turn_w=0.08, other_pose=None):
+    def escape_for(self, pose, other_xy, max_dist=0.45, other_clear=0.22, turn_w=0.08, other_pose=None, center_clear=None):
         """pose(x, y, yaw) 로봇이 other_xy 로봇을 피해 비켜설 자리. 반환 (비용, (x, y)) 또는 None.
         비용 = 직선거리 + turn_w × 회전각(rad) — 비용이 작은 쪽이 '비켜서기 쉬운 쪽'."""
         p = np.array(pose[:2], dtype=float)
@@ -158,7 +182,7 @@ class LaneGeometry:
         cl = np.concatenate([self.local_centerline(pose), self.local_centerline(other_xy)])
         dc = (np.sqrt(((cand[:, None, :] - cl[None, :, :]) ** 2).sum(-1)).min(1) if len(cl)
               else np.full(len(cand), self.center_pref))
-        keep = dc >= self.center_clear
+        keep = dc >= (self.center_clear if center_clear is None else center_clear)
         cand, dc = cand[keep], dc[keep]
         if not len(cand):
             return None

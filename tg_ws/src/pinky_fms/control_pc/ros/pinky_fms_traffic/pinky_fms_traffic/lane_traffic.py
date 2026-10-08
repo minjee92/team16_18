@@ -6,6 +6,12 @@ fleet_traffic 은 차선 미션 중인 로봇을 관제 대상에서 뺀다(lane
   3) 비켜서기 쉬운 쪽이 양보: 차선 밖 비켜설 자리로 이동(yield) → 도착(YIELDED)하면 우선권 로봇 재개(resume priority)
   4) 우선권 로봇이 복귀 자리를 지나가면 양보 로봇 재개(resume yielder): 떠난 자리·방향으로 돌아와 차선 추종 재개
 
+  갈림길 선착순(사용자 승인 2026-10-08): 갈림길(차선 지도에서 자동 추출)에 먼저 정지한 로봇(detail 'junction…')이 우선.
+  나중에 갈림길 junction_radius 안으로 다가오는 로봇은 hold, 우선 로봇이 정지 자리에서 junction_exit 이상 빠져나가면 resume.
+  우선 로봇이 'junction busy' 로 대기 로봇에 막혀 있으면(대기 로봇이 우선 로봇의 출구 쪽) 대기 로봇을 차선 밖으로 비켜서게 한다.
+  서 있는 로봇(IDLE/ARRIVED, 차선 위)이 주행 로봇 앞을 2 s 넘게 막으면 서 있는 로봇을 비켜서게 했다가 제자리로 돌린다
+  (로봇 노드는 미션 없이도 yield/resume 을 따른다, pinky-96 2026-10-08).
+  알림: 미션 중 차선 밖에 멈춘 로봇, LOST 로 10 s 넘게 멈춘 로봇 → /fleet/lane_traffic_state 의 alerts.
 로봇 쪽 실행은 fms_lane_mission(pinky_fms_bringup)이 한다.
   명령 /<ns>/lane_traffic_cmd (String JSON): {"id","cmd":"hold"} | {"id","cmd":"yield","x","y"} | {"id","cmd":"resume","role"}
     진행 중인 명령은 keepalive 로 1 s 마다 같은 id 로 다시 보낸다 (로봇은 10 s 동안 못 받으면 resume 으로 간주).
@@ -19,10 +25,11 @@ import re
 import time
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from .lane_geom import LaneGeometry, choose_yielder, headon, passed, rejoin_point
+from .lane_geom import LaneGeometry, ang_diff, choose_yielder, headon, passed, rejoin_point
 
 LANE_STATUS_RE = re.compile(r'^/([^/]+)/lane_status$')
 INACTIVE = ('ARRIVED', 'FAILED', 'IDLE')
@@ -36,6 +43,13 @@ class LaneRobot:
         self.pub = None
         self.cmd = None             # 지금 보내고 있는 명령 dict (keepalive)
         self.cmd_t = 0.0
+        self.jn_since = None        # 갈림길 정지(detail 'junction…')를 처음 본 시각
+        self.still_pose = None      # 마지막으로 움직였다고 본 위치와 그 시각 (멈춤 알림·막힘 판단)
+        self.still_t = 0.0
+        self.block_t = None         # 서 있는 로봇에 막혀 'obstacle ahead' 로 멈추기 시작한 시각
+
+    def still_for(self, now):
+        return now - self.still_t if self.still_pose is not None else 0.0
 
     def fresh(self, now, stale=1.5):
         return self.st is not None and now - self.t < stale
@@ -66,6 +80,8 @@ class Encounter:
         self.yielder = self.priority = None
         self.escape = self.rejoin = None
         self.failed = set()         # 비켜서기에 실패한 로봇 id
+        self.force_priority = None  # 갈림길 우선 로봇처럼 우선권이 정해진 경우
+        self.parked = None          # 서 있는 로봇(미션 없음)이 길을 막는 경우 그 로봇 — 미션이 없어도 '끝남'으로 보지 않는다
         self.rejoin_tries = 0       # 복귀가 막혀 복귀 자리를 다시 고른 횟수
         self.prio_path = None       # 우선권 로봇이 지나갈 중심선 점·진행 방향 (양보 로봇이 통로를 벗어났는지 판단)
         self.blocked_t = None       # PASS: 우선권 로봇이 양보 로봇 때문에 멈춰 있기 시작한 시각
@@ -98,11 +114,17 @@ class LaneTraffic(Node):
         self.declare_parameter('pass_timeout', 90.0)    # 우선권 로봇이 이 시간 안에 못 지나가면 그래도 양보 로봇을 재개
         self.declare_parameter('rejoin_timeout', 30.0)
         self.declare_parameter('cooldown', 5.0)         # 같은 두 로봇을 다시 조정하기 전 대기 (s)
+        self.declare_parameter('junction_radius', 0.6)  # 갈림길 중심에서 이 안으로 다가오는 비우선 로봇은 hold
+        self.declare_parameter('junction_at', 0.35)     # 갈림길에 '정지한' 로봇으로 볼 중심 거리
+        self.declare_parameter('junction_exit', 0.4)    # 우선 로봇이 정지 자리에서 이만큼 빠져나가면 대기 로봇 resume
+        self.declare_parameter('junction_busy_wait', 2.0)  # 우선 로봇이 대기 로봇 때문에 'junction busy' 로 이 시간 넘게 서 있으면 대기 로봇 양보
         gp = lambda n: self.get_parameter(n).value
         self.meet_dist, self.deadlock_dist = gp('meet_dist'), gp('deadlock_dist')
         self.escape_max, self.pass_dist = gp('escape_max'), gp('pass_dist')
         self.hold_wait, self.yield_timeout = gp('hold_wait'), gp('yield_timeout')
         self.pass_timeout, self.rejoin_timeout, self.cooldown = gp('pass_timeout'), gp('rejoin_timeout'), gp('cooldown')
+        self.jn_radius, self.jn_at, self.jn_exit, self.jn_busy_wait = (gp('junction_radius'), gp('junction_at'),
+                                                                      gp('junction_exit'), gp('junction_busy_wait'))
         self.geo = None
         if gp('lanes_yaml') and gp('floor_yaml'):
             try:
@@ -111,6 +133,11 @@ class LaneTraffic(Node):
                 self.get_logger().error(f'지도 읽기 실패: {e}')
         if self.geo is None:
             self.get_logger().warn('lanes_yaml/floor_yaml 이 없어 차선 마주침 조정 꺼짐')
+        # 갈림길: {'c': (x, y), 'owner': LaneRobot|None, 'owner_pose', 'held': set(LaneRobot), 'busy_t'}
+        self.junctions = [] if self.geo is None else [
+            {'c': c, 'owner': None, 'owner_pose': None, 'held': set(), 'busy_t': None} for c in self.geo.find_junctions()]
+        if self.geo is not None:
+            self.get_logger().info(f'갈림길 {len(self.junctions)}곳: ' + ', '.join(f'({j["c"][0]:.2f}, {j["c"][1]:.2f})' for j in self.junctions))
         self.robots = {}
         self.encounters = []
         self.cool = {}              # frozenset(id 쌍) → 다시 조정할 수 있는 시각
@@ -164,7 +191,9 @@ class LaneTraffic(Node):
         """양보 로봇 복귀. 원래 자리가 다른 로봇(도착해 서 있는 우선권 로봇 등)에 막혀 있으면 진행 방향 쪽 빈 자리로"""
         y = e.yielder
         blockers = [o.pose for o in self.robots.values() if o is not y and o.fresh(time.monotonic(), 3.0)]
-        rj = rejoin_point(self.geo, e.rejoin, y.pose[:2] if y.pose else e.rejoin[:2], blockers, skip=skip)
+        # 미션 없이 서 있던 로봇은 원래 자리가 제자리다: 실제로 부딪힐 만큼(0.2 m) 가까울 때만 다른 자리로
+        clear = 0.2 if e.parked is y else 0.35
+        rj = rejoin_point(self.geo, e.rejoin, y.pose[:2] if y.pose else e.rejoin[:2], blockers, clear=clear, skip=skip)
         if rj is None:
             self.get_logger().warn(f'{y.id}: 비어 있는 복귀 자리를 찾지 못함 → 원래 자리로 복귀 시도')
             return self._send(y, 'resume', role='yielder')
@@ -184,8 +213,16 @@ class LaneTraffic(Node):
     # ---------- 주기 판단 ----------
     def _tick(self):
         now = time.monotonic()
+        for r in self.robots.values():           # 움직임 추적 (2 cm 이상 움직이면 갱신)
+            p = r.pose if r.fresh(now) else None
+            if p is None:
+                r.still_pose = None
+            elif r.still_pose is None or math.hypot(p[0] - r.still_pose[0], p[1] - r.still_pose[1]) > 0.02:
+                r.still_pose, r.still_t = p, now
         if self.geo is not None:
+            self._junction_tick(now)
             self._detect(now)
+            self._detect_parked(now)
             for e in list(self.encounters):
                 self._step(e, now)
         for r in self.robots.values():       # resume 이 확인됐거나 로봇이 사라지면 keepalive 중단
@@ -196,6 +233,71 @@ class LaneTraffic(Node):
 
     def _busy(self, r):
         return any(r in (e.a, e.b) for e in self.encounters)
+
+    # ---------- 갈림길 선착순 ----------
+    def _jn_dist(self, r, j):
+        return math.hypot(r.pose[0] - j['c'][0], r.pose[1] - j['c'][1])
+
+    def _jn_eligible(self, r, j):
+        """갈림길 역할(우선·대기·양보)을 줄 수 있는 로봇: 차선 위에 있고 갈림길 중심과 사이에 지도 벽이 없다.
+        차선 밖에 멈춘 로봇(차선 이탈)이나 벽 너머 가까이 있는 로봇은 갈림길을 쓰는 로봇이 아니다 (rec_20261008_220315)."""
+        return self.geo.on_lane(r.pose) and not self.geo.wall_between(r.pose, j['c'])
+
+    def _junction_tick(self, now):
+        for r in self.robots.values():           # 갈림길 정지를 처음 본 시각 (선착순 기준)
+            at_jn = r.active(now) and str(r.st.get('detail', '')).startswith('junction')
+            r.jn_since = (r.jn_since or now) if at_jn else None
+        for j in self.junctions:
+            o = j['owner']
+            # 우선 로봇 해제: 정지 자리에서 빠져나갔거나 미션이 끝남
+            if o is not None:
+                left = (o.pose is not None and not str(o.st.get('detail', '')).startswith('junction')
+                        and math.hypot(o.pose[0] - j['owner_pose'][0], o.pose[1] - j['owner_pose'][1]) >= self.jn_exit)
+                if left or not o.active(now):
+                    self.get_logger().info(f'🚥 갈림길 ({j["c"][0]:.2f},{j["c"][1]:.2f}) {o.id} 통과 → 대기 로봇 출발 {[r.id for r in j["held"]]}')
+                    for r in j['held']:
+                        if not self._busy(r):
+                            self._release(r, 'junction')
+                    j.update(owner=None, owner_pose=None, held=set(), busy_t=None)
+                    o = None
+            # 우선 로봇 정하기: 갈림길에 정지한 로봇 중 먼저 선 쪽
+            if o is None:
+                at = [r for r in self.robots.values() if r.jn_since is not None and r.traffic is None
+                      and not self._busy(r) and self._jn_dist(r, j) <= self.jn_at and self._jn_eligible(r, j)]
+                if at:
+                    o = min(at, key=lambda r: r.jn_since)
+                    j.update(owner=o, owner_pose=o.pose, busy_t=None)
+                    self.get_logger().info(f'🚥 갈림길 ({j["c"][0]:.2f},{j["c"][1]:.2f}) 우선: {o.id} (먼저 정지)')
+            if o is None:
+                continue
+            # 나중에 다가오는 로봇 hold (갈림길 쪽으로 오는 중이거나 갈림길에 서 있는 로봇)
+            for r in self.robots.values():
+                if r is o or r in j['held'] or self._busy(r) or not r.active(now) or r.traffic is not None:
+                    continue
+                d = self._jn_dist(r, j)
+                if d > self.jn_radius or not self._jn_eligible(r, j):
+                    continue
+                toward = (j['c'][0] - r.pose[0]) * math.cos(r.pose[2]) + (j['c'][1] - r.pose[1]) * math.sin(r.pose[2]) > 0
+                if toward or r.jn_since is not None:
+                    j['held'].add(r)
+                    self.get_logger().info(f'✋ {r.id} 갈림길 대기 ({d:.2f} m): {o.id} 가 먼저 정지')
+                    self._send(r, 'hold')
+            j['held'] = {r for r in j['held'] if r.active(now) and not self._busy(r)}
+            # 교착: 우선 로봇이 대기 로봇 때문에 출구 확인을 못 함 → 대기 로봇을 비켜서게
+            busy = str(o.st.get('detail', '')).startswith('junction busy')
+            j['busy_t'] = (j['busy_t'] or now) if busy else None
+            if busy and now - j['busy_t'] >= self.jn_busy_wait and j['held']:
+                y = min(j['held'], key=lambda r: math.hypot(r.pose[0] - o.pose[0], r.pose[1] - o.pose[1]))
+                # 벽 확인은 로봇끼리가 아니라 각자와 갈림길 중심 사이로 (두 로봇을 잇는 직선은 칸막이 끝을 스칠 수 있다)
+                if (math.hypot(y.pose[0] - o.pose[0], y.pose[1] - o.pose[1]) <= 1.0
+                        and self._jn_eligible(y, j) and self._jn_eligible(o, j)):
+                    j['held'].discard(y)
+                    j['busy_t'] = None
+                    e = Encounter(o, y, 'junction busy')
+                    e.force_priority = o
+                    self.encounters.append(e)
+                    self.get_logger().info(f'⚠️ 갈림길 교착: {o.id} 출구를 {y.id} 가 막음 → {y.id} 양보')
+                    self._send(o, 'hold')
 
     def _detect(self, now):
         live = [r for r in self.robots.values() if r.active(now) and r.traffic is None and not self._busy(r)]
@@ -217,11 +319,60 @@ class LaneTraffic(Node):
                     self._send(a, 'hold')
                     self._send(b, 'hold')
 
+    def _detect_parked(self, now):
+        """서 있는 로봇(미션 없음·도착, 차선 위)이 주행 로봇 바로 앞을 막고 있으면(주행 로봇 'obstacle ahead' 2 s 이상)
+        서 있는 로봇이 비켜선다. 주행 로봇이 우선 (원래 목표로 계속)."""
+        for r in self.robots.values():
+            if not (r.active(now) and r.traffic is None and not self._busy(r) and r.st.get('detail') == 'obstacle ahead'):
+                r.block_t = None
+                continue
+            blocker = None
+            for o in self.robots.values():
+                if o is r or not o.fresh(now) or o.pose is None or o.st.get('state') not in INACTIVE:
+                    continue
+                if self._busy(o) or o.traffic is not None or not self.geo.on_lane(o.pose):
+                    continue
+                d = math.hypot(o.pose[0] - r.pose[0], o.pose[1] - r.pose[1])
+                ab = math.atan2(o.pose[1] - r.pose[1], o.pose[0] - r.pose[0])
+                if d <= 0.45 and ang_diff(r.pose[2], ab) <= math.radians(50) and not self.geo.wall_between(r.pose, o.pose):
+                    blocker = o
+                    break
+            if blocker is None:
+                r.block_t = None
+                continue
+            r.block_t = r.block_t or now
+            if now - r.block_t < 2.0 or self.cool.get(frozenset((r.id, blocker.id)), 0) > now:
+                continue
+            r.block_t = None
+            e = Encounter(r, blocker, 'parked robot blocking')
+            e.force_priority, e.parked = r, blocker
+            self.encounters.append(e)
+            self.get_logger().info(f'⚠️ 서 있는 {blocker.id} 가 {r.id} 앞을 막음 ({math.hypot(blocker.pose[0] - r.pose[0], blocker.pose[1] - r.pose[1]):.2f} m) → {blocker.id} 비켜서기')
+            self._send(r, 'hold')
+
+    def _alerts(self, now):
+        out = []
+        for r in self.robots.values():
+            if not r.active(now) or r.traffic is not None:
+                continue
+            stopped = r.still_for(now)
+            lost = 'lost' in str(r.st.get('detail', '')).lower()
+            if stopped >= 10.0 and not self.geo.on_lane(r.pose, 0.08):
+                out.append({'robot': r.id, 'reason': 'off_lane', 'pose': [round(v, 2) for v in r.pose], 'for': round(stopped)})
+            elif stopped >= 10.0 and lost:
+                out.append({'robot': r.id, 'reason': 'lost', 'pose': [round(v, 2) for v in r.pose], 'for': round(stopped)})
+        new = {(a['robot'], a['reason']) for a in out} - getattr(self, '_alert_keys', set())
+        for k in new:
+            self.get_logger().warn(f'🔔 {k[0]}: {"차선 밖에 멈춤" if k[1] == "off_lane" else "차선을 놓치고 멈춤"} (10 s 이상)')
+        self._alert_keys = {(a['robot'], a['reason']) for a in out}
+        return out
+
     def _step(self, e, now):
         age = now - e.t0
         # 어느 한쪽이 미션을 그만두면(취소·E-STOP·오프라인·도착) 남은 쪽을 풀어 주고 끝낸다
         # (우선권 로봇이 도착해 끝난 경우: 양보 로봇은 REJOIN 단계로 넘겨 복귀를 끝까지 지켜본다)
-        gone = [r for r in (e.a, e.b) if not r.fresh(now, 3.0) or r.st.get('state') in INACTIVE]
+        gone = [r for r in (e.a, e.b) if not r.fresh(now, 3.0)
+                or (r.st.get('state') in INACTIVE and r is not e.parked)]
         if gone and e.phase in ('PASS', 'REJOIN') and gone == [e.priority]:
             if e.phase == 'PASS':
                 self.get_logger().info(f'↩️ {e.priority.id} 미션 종료 → {e.yielder.id} 차선 복귀')
@@ -238,7 +389,10 @@ class LaneTraffic(Node):
             return self._finish(e, f'{gone[0].id} 미션 종료/연결 끊김')
 
         if e.phase == 'HOLD':
-            if not ((e.a.acked() and e.b.acked()) or age > self.hold_wait):
+            if e.parked is not None:
+                if not (e.force_priority.acked() or age > self.hold_wait):
+                    return
+            elif not ((e.a.acked() and e.b.acked()) or age > self.hold_wait):
                 return
             self._choose(e, now)
         elif e.phase == 'YIELD':
@@ -320,6 +474,8 @@ class LaneTraffic(Node):
             return
         def rec(r):
             return {'id': r.id, 'pose': r.pose, 'remaining': r.st.get('dist'), 'robot': r}
+        if e.force_priority is not None and len(cands) == 2:
+            cands = [e.other(e.force_priority)]      # 우선권이 정해져 있으면 상대만 양보 후보
         res = None
         for max_d in (self.escape_max, 0.7):
             if len(cands) == 2:
@@ -329,9 +485,15 @@ class LaneTraffic(Node):
                     break
             else:
                 y = cands[0]
-                found = self.geo.escape_for(y.pose, e.other(y).pose[:2], max_dist=max_d)
+                found = None
+                if e.force_priority is not None:
+                    # 갈림길: 우선 로봇의 출구 확인(jn_wait)은 출구 경로 ±0.20 m 의 다른 로봇을 보므로 그보다 멀리 (없으면 0.19)
+                    found = self.geo.escape_for(y.pose, e.other(y).pose[:2], max_dist=max_d, center_clear=0.25)
+                found = found or self.geo.escape_for(y.pose, e.other(y).pose[:2], max_dist=max_d)
                 if found is not None:
-                    p, esc, info = e.other(y), found[1], {'why': f'{e.other(y).id} failed', y.id: round(found[0], 3)}
+                    why = ('parked robot yields' if e.parked is not None else 'junction first-come') \
+                        if e.force_priority is not None and not e.failed else f'{e.other(y).id} failed'
+                    p, esc, info = e.other(y), found[1], {'why': why, y.id: round(found[0], 3)}
                     res = True
                     break
         if res is None:
@@ -355,6 +517,8 @@ class LaneTraffic(Node):
         if self.encounters:
             self.get_logger().warn(f'🛑 GLOBAL E-STOP: 차선 마주침 조정 {len(self.encounters)}건 취소')
         self.encounters.clear()
+        for j in self.junctions:
+            j.update(owner=None, owner_pose=None, held=set(), busy_t=None)
         for r in self.robots.values():
             r.cmd = None                # 로봇 차선 노드는 E-STOP 을 직접 받아 미션을 끝낸다
 
@@ -364,7 +528,10 @@ class LaneTraffic(Node):
                          'cmd': r.cmd['cmd'] if r.cmd else None, 'acked': r.acked()}
                   for r in self.robots.values()}
         self.state_pub.publish(String(data=json.dumps(
-            {'enabled': self.geo is not None, 'encounters': [e.summary() for e in self.encounters], 'robots': robots})))
+            {'enabled': self.geo is not None, 'encounters': [e.summary() for e in self.encounters], 'robots': robots,
+             'alerts': self._alerts(now) if self.geo is not None else [],
+             'junctions': [{'c': [round(v, 2) for v in j['c']], 'owner': j['owner'].id if j['owner'] else None,
+                            'held': sorted(r.id for r in j['held'])} for j in self.junctions]})))
 
 
 def main():
@@ -372,7 +539,7 @@ def main():
     node = LaneTraffic()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):     # Ctrl+C / launch 종료
         pass
     finally:
         node.destroy_node()

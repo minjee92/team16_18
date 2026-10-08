@@ -5,6 +5,8 @@ lane_status / lane_traffic_cmd 인터페이스(2026-10-07 pinky-96 구현)를 �
   - 앞 사물 정지: 다른 가짜 로봇(peers 의 lane_status pose)이 앞 ±0.10 m 통로 안 stop_dist(앞면 기준) 이내면 정지
   - hold / yield{x,y} / resume{role}, 같은 id 무시, HOLD·YIELDED 에서 10 s 무명령이면 resume 으로 간주
   - 비켜서기·복귀: 방향 오차 0.25 rad 초과면 제자리 회전, 아니면 직진 0.06 m/s, 0.03 m 안이면 도착, 복귀는 yaw ±8°
+  - 갈림길(jn_wait, pinky-96 2026-10-08 사양 흉내): junctions 중심 0.20 m 안에 처음 들어오면 정지(detail 'junction check'),
+    경로 출구 쪽 0.6 m(폭 ±0.20 m)에 다른 로봇이 없는 상태가 1 s 이어지면 출발, 있으면 'junction busy · robot'
 'collision' 은 두 로봇 중심이 몸체 폭(0.12 m)보다 가까워진 횟수 (lane_status 에 기록, 시나리오가 확인).
 """
 import json
@@ -13,6 +15,7 @@ import time
 
 import numpy as np
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -30,7 +33,8 @@ class LaneMockRobot(Node):
     def __init__(self):
         super().__init__('lane_mock_robot')
         for n, v in (('namespace', 'amr_01'), ('lanes_yaml', ''), ('start', [0.0, 0.0]), ('goal', [0.0, 0.0]),
-                     ('peers', ['']), ('speed', 0.15), ('stop_dist', 0.15), ('start_delay', 3.0)):
+                     ('peers', ['']), ('speed', 0.15), ('stop_dist', 0.15), ('start_delay', 3.0),
+                     ('junctions', [0.0])):
             self.declare_parameter(n, v)
         gp = lambda n: self.get_parameter(n).value
         self.ns = gp('namespace')
@@ -43,6 +47,11 @@ class LaneMockRobot(Node):
         d = self.path[min(3, len(self.path) - 1)] - self.path[0]
         self.x, self.y, self.yaw = float(self.path[0, 0]), float(self.path[0, 1]), math.atan2(d[1], d[0])
         self.speed, self.stop_dist = gp('speed'), gp('stop_dist')
+        jv = list(gp('junctions'))
+        self.junctions = [(jv[k], jv[k + 1]) for k in range(0, len(jv) - 1, 2)]
+        self.jn_done = set()            # 이미 지나간 갈림길 (같은 갈림길에서 다시 멈추지 않게)
+        self.jn = None                  # 지금 정지 중인 갈림길 index
+        self.jn_clear_t = None
         self.t_start = time.monotonic() + gp('start_delay')
         self.state, self.detail = 'DRIVING', 'lane → goal'
         self.traffic = self.traffic_id = self.role = None
@@ -78,8 +87,8 @@ class LaneMockRobot(Node):
         if d['id'] == self.traffic_id:
             return
         self.traffic_id = d['id']
-        if self.state in ('ARRIVED',):
-            return
+        if self.state == 'ARRIVED' and d['cmd'] == 'hold':
+            return                      # 서 있는 로봇: hold 는 무시, yield/resume 은 따른다 (pinky-96 2026-10-08)
         if d['cmd'] == 'hold':
             if self.traffic in (None, 'HOLD'):
                 self.traffic = 'HOLD'
@@ -120,10 +129,14 @@ class LaneMockRobot(Node):
                 self.collisions += 1
                 self.get_logger().error(f'💥 {self.ns} 충돌 ({math.hypot(p[0] - self.x, p[1] - self.y):.3f} m)')
             self.in_contact = close
-        if self.state == 'ARRIVED' or now < self.t_start:
+        if now < self.t_start:
             return
         if self.traffic is not None:
             return self._traffic_step(now)
+        if self.state == 'ARRIVED':
+            return
+        if self._junction_wait(now):
+            return
         if self._front_block() <= self.stop_dist:
             self.detail = 'obstacle ahead'
             return
@@ -147,6 +160,31 @@ class LaneMockRobot(Node):
         j = min(self.i + 4, len(self.path) - 1)
         if j > self.i:
             self.yaw = math.atan2(self.path[j, 1] - self.y, self.path[j, 0] - self.x)
+
+    def _junction_wait(self, now):
+        if self.jn is None:
+            for k, c in enumerate(self.junctions):
+                if k not in self.jn_done and math.hypot(c[0] - self.x, c[1] - self.y) <= 0.20:
+                    self.jn, self.jn_clear_t = k, None
+                    break
+            if self.jn is None:
+                return False
+        # 출구 쪽: 경로 앞 0.6 m 의 점들 주변 0.20 m 안에 다른 로봇이 있으면 busy
+        seg = np.hypot(*np.diff(self.path[self.i:], axis=0).T)
+        n = int(np.searchsorted(np.cumsum(seg), 0.6)) + 1
+        ahead = self.path[self.i:self.i + n + 1]
+        busy = any(np.min(np.hypot(ahead[:, 0] - p[0], ahead[:, 1] - p[1])) <= 0.20 for p in self.peers.values()) if len(ahead) else False
+        if busy:
+            self.jn_clear_t = None
+            self.detail = 'junction busy · robot'
+            return True
+        self.jn_clear_t = self.jn_clear_t or now
+        if now - self.jn_clear_t < 1.0:
+            self.detail = 'junction check'
+            return True
+        self.jn_done.add(self.jn)
+        self.jn = None
+        return False
 
     def _traffic_step(self, now):
         tr = self.traffic
@@ -187,14 +225,14 @@ class LaneMockRobot(Node):
         self.y += v * math.sin(self.yaw)
 
     def _publish(self):
-        if self.state == 'ARRIVED':
+        if self.state == 'ARRIVED' and self.traffic is None:
             state, detail = 'ARRIVED', 'at target'
         elif self.traffic is not None:
             state, detail = {'HOLD': ('WAITING', 'encounter'), 'YIELDING': ('WAITING', 'yielding'),
                              'YIELDED': ('WAITING', 'yielded'), 'REJOINING': ('RESUME DRIVING', 'back to lane'),
                              'YIELD_FAILED': ('WAITING', 'yield failed')}[self.traffic]
-        elif self.detail == 'obstacle ahead':
-            state, detail = 'WAITING', 'obstacle ahead'
+        elif self.detail == 'obstacle ahead' or self.detail.startswith('junction'):
+            state, detail = 'WAITING', self.detail
         elif self.role == 'priority' and time.monotonic() - self.role_t < 5.0:
             state, detail = 'OWN DRIVING PRIORITY', 'lane → goal'
         else:
@@ -211,7 +249,7 @@ def main():
     node = LaneMockRobot()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):     # Ctrl+C / launch 종료
         pass
     finally:
         node.destroy_node()
