@@ -682,7 +682,8 @@ class FmsLaneMission(AutonomousDriveNode):
                 self.tr_rejoin = pose                  # 처음 비켜설 때만: 돌아올 차선 위 자리·방향
             self.traffic, self.tr_target, self.tr_yaw = 'YIELDING', xy, None
             self.tr_t0, self.tr_blocked_t, self.tr_driving, self.tr_at = now, None, False, False
-            self.get_logger().info(f'↪️ 양보: 차선 밖 ({xy[0]:.2f}, {xy[1]:.2f}) 로 비켜섭니다 (복귀 자리 {pose[0]:.2f}, {pose[1]:.2f})')
+            where = '차선 위 뒤쪽' if self.lane_free is not None and self._band_inside(xy[0], xy[1], 0.03) else '차선 밖'
+            self.get_logger().info(f'↪️ 양보: {where} ({xy[0]:.2f}, {xy[1]:.2f}) 로 비켜섭니다 (복귀 자리 {pose[0]:.2f}, {pose[1]:.2f})')
         elif cmd == 'resume':
             self.traffic_role, self.tr_role_t = d.get('role'), now
             self._traffic_resume(now, rj)
