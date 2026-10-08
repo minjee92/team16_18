@@ -64,9 +64,11 @@ function closeModal(modalId, contentId, callback) {
 function toast(msg, kind = 'info') {
     const colors = { info: 'border-cyan-600 text-cyan-200', ok: 'border-emerald-600 text-emerald-200', err: 'border-rose-600 text-rose-200' };
     const el = document.createElement('div');
-    el.className = `bg-slate-800 border ${colors[kind]} rounded-lg px-4 py-2 text-xs shadow-xl max-w-xs`;
+    el.className = `bg-slate-800/95 border ${colors[kind]} rounded-lg px-4 py-2 text-xs shadow-xl text-center`;
     el.textContent = msg;
-    document.getElementById('toast-area').appendChild(el);
+    const area = document.getElementById('toast-area');
+    area.prepend(el);                                       // 새 알림이 맨 위 (제목 줄 가운데)
+    while (area.children.length > 4) area.lastElementChild.remove();
     setTimeout(() => el.remove(), 5000);
 }
 
