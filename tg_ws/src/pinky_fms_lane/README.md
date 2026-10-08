@@ -44,8 +44,8 @@ colcon build
 `~/pinky_pro/src` 는 팀원 배포 위치라 아무것도 넣지 않는다. 대신 `~/team16_18/tg_ws` 에 빌드한 `pinky_fms_bringup` 이
 `~/pinky_pro` 의 같은 패키지를 **덮어쓴다** (고친 `fms_lane_mission`·`robot_lane` 을 쓰려면 필요).
 ```bash
-git clone <저장소 주소> ~/team16_18                      # 이미 있으면: cd ~/team16_18 && git pull
-cd ~/team16_18 && git checkout <작업 브랜치>              # 예: feat/tg-fms-lane
+git clone <저장소 주소> ~/team16_18                      # 처음 한 번만
+cd ~/team16_18 && git fetch origin --tags && git checkout realtest-20261008   # 로봇은 브랜치 대신 시험용 태그를 쓴다
 cd ~/team16_18/tg_ws && source /opt/ros/jazzy/setup.bash && source ~/pinky_pro/install/setup.bash
 colcon build --packages-select pinky_fms_bringup pinky_fms_lane_robot --allow-overriding pinky_fms_bringup \
   --packages-ignore pinky_fms_interfaces pinky_fms_core pinky_fms_traffic pinky_fms_sim pinky_autonomous pinky_fms_lane
