@@ -798,7 +798,7 @@ class FleetTraffic(FleetCoordinator):
                 if st.mode == 'WAIT' and math.hypot(r.pose[0] - tgt[0], r.pose[1] - tgt[1]) < 0.15:
                     self._note(r, st, c.why)                  # 이미 대기 지점에 와 있다: 같은 목표를 다시 보내지 않는다 (재전송마다 Nav2 가 다시 출발·회전한다)
                     return
-                if st.mode != 'HOLD' or (st.sub_xy is None or math.hypot(st.sub_xy[0] - tgt[0], st.sub_xy[1] - tgt[1]) > 0.15) and self._can_resend(st):
+                if (st.mode != 'HOLD' or st.sub_xy is None or math.hypot(st.sub_xy[0] - tgt[0], st.sub_xy[1] - tgt[1]) > 0.15) and self._can_resend(st):   # 재전송 간격은 항상 지킨다 (실패하면 0.1 s 마다 다시 보내던 것)
                     prev = a.plan[max(idx - 1, 0)]
                     yaw = math.atan2(tgt[1] - prev[1], tgt[0] - prev[0])
                     self.get_logger().info(f'{r.id}: ({tgt[0]:.2f}, {tgt[1]:.2f}) 에서 대기 ({c.why})')
@@ -808,7 +808,7 @@ class FleetTraffic(FleetCoordinator):
             self._note(r, st, c.why)
         elif c.kind == 'YIELD' and c.path is not None and len(c.path) > 1 and time.monotonic() >= st.block_until:
             tgt = c.path[-1]
-            if st.mode != 'YIELD' or (st.sub_xy is None or math.hypot(st.sub_xy[0] - tgt[0], st.sub_xy[1] - tgt[1]) > 0.25) and self._can_resend(st):
+            if (st.mode != 'YIELD' or st.sub_xy is None or math.hypot(st.sub_xy[0] - tgt[0], st.sub_xy[1] - tgt[1]) > 0.25) and self._can_resend(st):
                 self.get_logger().info(f'{r.id}: ({tgt[0]:.2f}, {tgt[1]:.2f}) 로 비켜섭니다 ({c.why})')
                 yaw = math.atan2(tgt[1] - c.path[-2][1], tgt[0] - c.path[-2][0])
                 self._send(r, yaw_pose(tgt[0], tgt[1], yaw), 'YIELD', c.why)
