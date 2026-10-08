@@ -30,7 +30,7 @@ if [ -n "$ports" ] || [ -n "$procs" ]; then
 fi
 
 # Ctrl+C 는 run_real.sh 가 받아 정리한다. 이 스크립트는 정리가 끝날 때까지 기다렸다가 남은 것을 확인한다
-trap '' INT
+trap ':' INT
 echo "[fms_start] 관제 시작: $RUN_REAL ${1:-}  (끄기: Ctrl+C)"
 bash "$RUN_REAL" "$@"
 rc=$?
