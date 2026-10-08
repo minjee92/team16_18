@@ -106,6 +106,8 @@ class LaneTraffic(Node):
         self.declare_parameter('heartbeat_period', 0.2)  # /fleet/lane_heartbeat 주기 (s). 0 이면 보내지 않음
         self.declare_parameter('escape_wall_margin', 0.03)  # 비켜설 자리의 벽 여유 (몸체 반폭 0.06 에 더함, m). lane_geom 주석 참고
         self.declare_parameter('escape_path_clear', 0.065)  # 비켜서는 직선 위 벽 여유 (m)
+        # 계산에서만 벽으로 막을 직사각형 "x0,y0,x1,y1;x0,y0,x1,y1" (지도 벽 틈·출입구). 비우면 막지 않음 (예전과 같음)
+        self.declare_parameter('escape_block_rects', '')
         self.declare_parameter('orphan_warn', 5.0)      # 주인 없는 HOLD 를 경고하기까지 (s)
         gp = lambda n: self.get_parameter(n).value
         self.meet_dist, self.deadlock_dist = gp('meet_dist'), gp('deadlock_dist')
@@ -116,8 +118,14 @@ class LaneTraffic(Node):
         self.geo = None
         if gp('lanes_yaml') and gp('floor_yaml'):
             try:
+                rects = [tuple(float(v) for v in part.split(',')) for part in str(gp('escape_block_rects')).split(';')
+                         if part.strip()]
+                if any(len(r) != 4 for r in rects):
+                    raise ValueError(f'escape_block_rects 형식 오류 (x0,y0,x1,y1;...): {gp("escape_block_rects")}')
                 self.geo = LaneGeometry(gp('lanes_yaml'), gp('floor_yaml'), wall_margin=float(gp('escape_wall_margin')),
-                                        pass_clear=float(gp('escape_path_clear')))
+                                        pass_clear=float(gp('escape_path_clear')), block_rects=rects)
+                if rects:
+                    self.get_logger().info(f'비켜설 자리 계산에서 막는 영역 {rects}, 벽 여유 {gp("escape_wall_margin")}')
             except Exception as e:      # 지도가 없거나 형식이 다르면 조정 없이 상태만 발행
                 self.get_logger().error(f'지도 읽기 실패: {e}')
         if self.geo is None:

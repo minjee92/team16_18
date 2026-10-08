@@ -7,12 +7,13 @@ SC=${1:-all}
 ROOT=${FMS_WS:-$HOME/pinky}; HERE=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$HERE/../../../.." && pwd)
 LANES=$REPO/control_pc/backend/maps/mission4_3_lanes_1cm/map.yaml
 FLOOR=$REPO/control_pc/backend/maps/mission4_3_nolanes_1cm/map.yaml
+BLOCK=${ESCAPE_BLOCK--0.14,-0.07,-0.12,0.17}   # run_real.sh 와 같은 막을 영역 (지도 왼쪽 벽 아래 틈). 막지 않으려면 ESCAPE_BLOCK= 로
 source /opt/ros/jazzy/setup.bash; source $ROOT/install/setup.bash
 export ROS_DOMAIN_ID=96 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 unset CYCLONEDDS_URI ROS_LOCALHOST_ONLY
 run() {   # 시나리오 a_start a_goal b_start b_goal b_speed 조정기대
   local name=$1 PIDS=()
-  setsid ros2 run pinky_fms_traffic lane_traffic --ros-args -p lanes_yaml:=$LANES -p floor_yaml:=$FLOOR > /tmp/lanetest_traffic.log 2>&1 & PIDS+=($!)
+  setsid ros2 run pinky_fms_traffic lane_traffic --ros-args -p lanes_yaml:=$LANES -p floor_yaml:=$FLOOR -p "escape_block_rects:=$BLOCK" > /tmp/lanetest_traffic.log 2>&1 & PIDS+=($!)
   setsid ros2 run pinky_fms_traffic lane_mock_robot --ros-args -p namespace:=amr_01 -p lanes_yaml:=$LANES -p "start:=$2" -p "goal:=$3" -p "peers:=[amr_02]" > /tmp/lanetest_amr_01.log 2>&1 & PIDS+=($!)
   setsid ros2 run pinky_fms_traffic lane_mock_robot --ros-args -p namespace:=amr_02 -p lanes_yaml:=$LANES -p "start:=$4" -p "goal:=$5" -p "peers:=[amr_01]" -p speed:=$6 > /tmp/lanetest_amr_02.log 2>&1 & PIDS+=($!)
   python3 $HERE/lane_scenario.py $name 120 $7 2>&1 | grep -v "Warn\|scipy"
@@ -26,7 +27,7 @@ run() {   # 시나리오 a_start a_goal b_start b_goal b_speed 조정기대
 CLEAN=$REPO/maps/mission4_3_clean_1cm.yaml
 run_route() {   # 시나리오 a_start a_yaw b_start b_yaw 조정기대 lane_scenario 추가 인자...
   local name=$1 PIDS=()
-  setsid ros2 run pinky_fms_traffic lane_traffic --ros-args -p lanes_yaml:=$LANES -p floor_yaml:=$FLOOR > /tmp/lanetest_traffic.log 2>&1 & PIDS+=($!)
+  setsid ros2 run pinky_fms_traffic lane_traffic --ros-args -p lanes_yaml:=$LANES -p floor_yaml:=$FLOOR -p "escape_block_rects:=$BLOCK" > /tmp/lanetest_traffic.log 2>&1 & PIDS+=($!)
   setsid ros2 launch pinky_fms_lane lane_route.launch.xml map_yaml:=$CLEAN > /tmp/lanetest_route.log 2>&1 & PIDS+=($!)
   setsid ros2 run pinky_fms_traffic lane_mock_robot --ros-args -p namespace:=amr_01 -p lanes_yaml:=$LANES -p route_mode:=true -p "start:=$2" -p start_yaw:=$3 -p "peers:=[amr_02]" > /tmp/lanetest_amr_01.log 2>&1 & PIDS+=($!)
   setsid ros2 run pinky_fms_traffic lane_mock_robot --ros-args -p namespace:=amr_02 -p lanes_yaml:=$LANES -p route_mode:=true -p "start:=$4" -p start_yaw:=$5 -p "peers:=[amr_01]" > /tmp/lanetest_amr_02.log 2>&1 & PIDS+=($!)

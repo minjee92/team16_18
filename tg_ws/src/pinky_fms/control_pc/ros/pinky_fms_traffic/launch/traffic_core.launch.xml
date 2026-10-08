@@ -12,7 +12,9 @@
   <arg name="lane_robots_as_fixed" default="false"/>   <!-- encounter: 마주쳤을 때만 처리 / predict: 이전 방식(미리 예측해서 피함) -->
   <!-- 차선 주행(Lane Following) 로봇끼리 마주침 조정 (lane_traffic). 둘 중 하나라도 비우면 조정 꺼짐(상태만 발행) -->
   <arg name="lanes_yaml" default=""/>   <!-- 차선만 빈 지도 (mission4_3_lanes_1cm) -->
-  <arg name="floor_yaml" default=""/>   <!-- 차선 지운 지도 (mission4_3_nolanes_1cm) -->
+  <arg name="floor_yaml" default=""/>
+  <arg name="escape_wall_margin" default="0.03"/>   <!-- 비켜설 자리 벽 여유 (몸체 반폭 0.06 에 더함, m) -->
+  <arg name="escape_block_rects" default=""/>       <!-- 계산에서만 벽으로 막을 영역 "x0,y0,x1,y1;..." (지도 벽 틈). 비우면 막지 않음 -->   <!-- 차선 지운 지도 (mission4_3_nolanes_1cm) -->
   <node pkg="pinky_fms_core" exec="fleet_mission" output="screen"/>
   <node pkg="pinky_fms_traffic" exec="fleet_traffic" output="screen">
     <param name="robots_file" value="$(var robots_file)"/>
@@ -27,5 +29,7 @@
   <node pkg="pinky_fms_traffic" exec="lane_traffic" output="screen">
     <param name="lanes_yaml" value="$(var lanes_yaml)"/>
     <param name="floor_yaml" value="$(var floor_yaml)"/>
+    <param name="escape_wall_margin" value="$(var escape_wall_margin)"/>
+    <param name="escape_block_rects" value="$(var escape_block_rects)"/>
   </node>
 </launch>

@@ -11,6 +11,9 @@ CFG=${1:-$REPO/control_pc/ros/pinky_fms_core/config/robots.yaml}
 MAP=${MAP:-$REPO/maps/mission4_3_clean_1cm.yaml}     # fleet_traffic 충돌 방지용 지도. 비우면 충돌 방지 꺼짐
 LANES=${LANES:-$REPO/control_pc/backend/maps/mission4_3_lanes_1cm/map.yaml}     # lane_traffic: 차선 띠 (비우면 차선 마주침 조정 꺼짐)
 FLOOR=${FLOOR:-$REPO/control_pc/backend/maps/mission4_3_nolanes_1cm/map.yaml}   # lane_traffic: 바닥·벽
+# lane_traffic 비켜설 자리: 벽 여유(m)와 계산에서만 벽으로 막을 영역 "x0,y0,x1,y1;..." (mission4_3 지도 왼쪽 벽 아래 출입구 틈)
+ESCAPE_MARGIN=${ESCAPE_MARGIN:-0.03}
+ESCAPE_BLOCK=${ESCAPE_BLOCK:--0.14,-0.07,-0.12,0.17}
 source /opt/ros/jazzy/setup.bash
 source $WS/install/setup.bash
 source $REPO/control_pc/fms_env.sh $CFG
@@ -28,7 +31,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 setsid ros2 launch rosbridge_server rosbridge_websocket_launch.xml > /tmp/fms_real_rosbridge.log 2>&1 & PIDS+=($!)
-setsid ros2 launch pinky_fms_traffic traffic_core.launch.xml robots_file:=$CFG map_yaml:=$MAP lanes_yaml:=$LANES floor_yaml:=$FLOOR > /tmp/fms_real_core.log 2>&1 & PIDS+=($!)
+setsid ros2 launch pinky_fms_traffic traffic_core.launch.xml robots_file:=$CFG map_yaml:=$MAP lanes_yaml:=$LANES floor_yaml:=$FLOOR \
+  escape_wall_margin:=$ESCAPE_MARGIN "escape_block_rects:=$ESCAPE_BLOCK" > /tmp/fms_real_core.log 2>&1 & PIDS+=($!)
 # 차선 미션 경로 계획 (pinky_fms_lane 이 빌드돼 있을 때만). robots.yaml 의 lane_route: true 이면 GUI 가 목표를 이 노드로 보낸다
 if ros2 pkg prefix pinky_fms_lane > /dev/null 2>&1; then
   setsid ros2 launch pinky_fms_lane lane_route.launch.xml map_yaml:=$MAP > /tmp/fms_real_lane_route.log 2>&1 & PIDS+=($!)

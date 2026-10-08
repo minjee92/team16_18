@@ -285,6 +285,7 @@ ros2 run pinky_fms_lane make_lane_map --map $MAP      # GUI 표시용 차선 지
 | 12 끄기 | GUI / 관제 PC | 미션 취소 → OFF → run_real.sh Ctrl+C | | |
 
 - GUI 에서 고른 지도는 그 로봇 스택(AMCL)에도 쓰인다 (팀원 백엔드 동작). **차선 미션은 `mission4_3_lanes_1cm`, Nav2 미션은 `mission4_3_nolanes_1cm`(= clean 지도)** 를 고른다. `send_initial_pose` 는 항상 clean 지도(`$MAP`)로 확인한다 (벽이 같아서 결과가 같다).
+- 비켜설 자리 벽 여유: `ESCAPE_MARGIN=0.08 $FMS_WS/src/pinky_fms/scripts/run_real.sh` 처럼 관제를 켤 때만 바꾼다 (기본 0.03, 실행 중에는 못 바꿈). 올리면 꼬리 아랫길처럼 좁은 곳에서 마주칠 때 비켜설 자리가 없어 둘 다 선다 (`🆘 … 사람 확인 필요` → GUI 에서 취소). 지도 왼쪽 벽 아래 틈은 `ESCAPE_BLOCK`(기본 `-0.14,-0.07,-0.12,0.17`) 으로 계산에서만 막는다.
 - (선택) cmd_vel 안전 게이트: 백엔드 `robots.yaml` 의 `stacks.lane` 명령 끝에 `use_gate:=true` 를 붙이면 `fms_lane_mission` 의 속도가 `cmd_vel_gate` 를 거친다. 입력 끊김(0.5 s)·관제 신호 끊김(2 s)·초음파 데이터 없음/끊김/무효값 3번 연속·`cmd_vel` 발행자 겹침이면 0 을 내고, 속도는 0~0.25 m/s, 회전 ±1.5 rad/s 로 자른다. 상태: `ros2 topic echo /amr_0N/cmd_vel_gate/status`. 실물에서 처음 켤 때는 한 대로, 초음파가 들어오는지(`NO_SONAR` 가 없어야 함)부터 본다.
 - 초음파 0 값 정지(`sonar_zero_stop_count` 3)는 센서 앞을 손으로 바짝 막았을 때 0 이 연속으로 나오면 `⚠️ 초음파 0 값이 3번 연속` 로그와 함께 선다. 정상 주행 중 이 로그가 자주 나오면 값을 늘린다.
 

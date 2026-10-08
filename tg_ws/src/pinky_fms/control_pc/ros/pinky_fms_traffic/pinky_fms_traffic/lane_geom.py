@@ -32,7 +32,10 @@ def seg_point_dist(a, b, p):
 
 
 class LaneGeometry:
-    def __init__(self, lanes_yaml, floor_yaml, res=0.02, center_clear=0.19, wall_margin=0.03, center_pref=0.23, pass_clear=0.065):
+    def __init__(self, lanes_yaml, floor_yaml, res=0.02, center_clear=0.19, wall_margin=0.03, center_pref=0.23, pass_clear=0.065,
+                 block_rects=()):
+        # block_rects: [(x0, y0, x1, y1), ...] 계산에서만 벽으로 막을 직사각형 (지도 파일은 그대로). 지도 벽에 틈(출입구)이 있으면
+        #   아레나 밖 바닥이 비켜설 자리 후보가 되므로 막는다. 주면 막은 뒤 차선과 이어진 바닥만 후보로 쓴다 (없으면 예전과 같음).
         # wall_margin: 비켜설 자리(로봇 중심)의 벽 여유 = 몸체 반폭 0.06 + wall_margin. lane_traffic 파라미터 escape_wall_margin.
         #   clean 지도가 실제 아레나보다 세로 약 8 cm·상자 쪽 가로 약 4 cm 작아 안쪽 벽 위치가 몇 cm 어긋날 수 있어 늘리고 싶지만,
         #   2026-10-08 시험: 0.08(+5 cm)·0.05(+2 cm) 에서는 꼬리 아랫길 마주침(run_lane_test headon_wall)에 맞는 자리가 없어
@@ -47,6 +50,14 @@ class LaneGeometry:
         if (self.lane.H, self.lane.W) != (self.floor.H, self.floor.W):
             raise ValueError('차선 지도와 바닥 지도의 크기가 다릅니다')
         self.res = self.floor.res
+        if block_rects:
+            fl = self.floor
+            for x0, y0, x1, y1 in block_rects:
+                c0, c1 = sorted((int((x0 - fl.ox) / fl.res), int((x1 - fl.ox) / fl.res)))
+                r0, r1 = sorted((int((y0 - fl.oy) / fl.res), int((y1 - fl.oy) / fl.res)))
+                fl.occ[max(r0, 0):r1 + 1, max(c0, 0):c1 + 1] = True
+                fl.free[max(r0, 0):r1 + 1, max(c0, 0):c1 + 1] = False
+            fl.clear = ndi.distance_transform_edt(fl.free) * fl.res - fl.res / 2
         band = self.lane.free
         self.lane_dist = ndi.distance_transform_edt(~band) * self.res      # 차선 띠까지 거리 (띠 안 = 0)
         # 차선 중심선: 띠 안에서 가장자리까지 거리가 주변(5×5) 최대인 칸
@@ -58,6 +69,10 @@ class LaneGeometry:
         self.pass_clear = pass_clear                                       # 비켜서는 직선 위 모든 점의 최소 벽 여유
         esc = (self.floor.free & (self.floor.clear >= BODY_HALF + wall_margin)
                & (self.lane_dist >= BODY_HALF + 0.02))
+        if block_rects:                                  # 막은 뒤 차선 띠와 이어진 바닥만 (아레나 밖 바닥 제외)
+            lab, _ = ndi.label(self.floor.free | band)
+            keep = np.unique(lab[band & (lab > 0)])
+            esc &= np.isin(lab, keep)
         rr, cc = np.nonzero(esc)
         self.esc_xy = np.stack([self.floor.ox + (cc + 0.5) * self.res, self.floor.oy + (rr + 0.5) * self.res], axis=1)
 
