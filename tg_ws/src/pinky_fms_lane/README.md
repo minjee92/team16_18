@@ -64,21 +64,35 @@ source ~/team16_18/tg_ws/install/setup.bash && ros2 pkg prefix pinky_fms_bringup
 
 **관제 PC 터미널 (P1~P4) 마다:**
 ```bash
-export FMS_WS=<저장소>/tg_ws
-source /opt/ros/jazzy/setup.bash && source ~/pinky/install/setup.bash && source $FMS_WS/install/setup.bash
-source $FMS_WS/src/pinky_fms/control_pc/fms_env.sh
-export MAP=$FMS_WS/src/pinky_fms/maps/mission4_3_clean_1cm.yaml
+source ~/dev_ws/team16_18/tg_ws/src/pinky_fms_lane/scripts/pc_env.sh
 ```
-정상: `[fms_env] ROS_DOMAIN_ID=16, DDS 탐색=unicast (RMW=rmw_cyclonedds_cpp)`
+정상: `[pc_env] FMS_WS=…/tg_ws  MAP=mission4_3_clean_1cm.yaml  ROS_DOMAIN_ID=16  RMW=rmw_cyclonedds_cpp`
+- ROS Jazzy → `~/pinky` → tg_ws install 을 source 하고 `FMS_WS`, `MAP` 을 정한 뒤 `fms_env.sh` 로 robots.yaml 의 도메인·DDS 설정을 적용한다. 두 번 불러도 같다.
+- 바꾸려면 미리 export: `FMS_WS`, `MAP`, `PINKY_WS`(기본 `~/pinky`), `FMS_ROBOTS_FILE`. 없는 파일이 있으면 무엇이 없는지 알려 준다.
+- `bash pc_env.sh` 처럼 실행하면 아무것도 바뀌지 않으니 꼭 `source`.
+- 가제보(`run_lane_sim.sh`, 도메인 93)와 격리 시험은 스스로 도메인을 정하므로 이 파일을 불러 둔 터미널에서 돌려도 섞이지 않는다 (확인함).
 
 **로봇 SSH 터미널 (R1~R3) 마다 — GUI 에서 ON 한 뒤에:**
 ```bash
-source /opt/ros/jazzy/setup.bash && source ~/pinky_pro/install/setup.bash && source ~/team16_18/tg_ws/install/setup.bash
-source $(ros2 pkg prefix pinky_fms_lane_robot)/share/pinky_fms_lane_robot/scripts/fms_robot_env.sh amr_01
+source ~/team16_18/tg_ws/src/pinky_fms_lane/robot/pinky_fms_lane_robot/scripts/robot_env.sh amr_01
 ```
-정상: `[fms_robot_env] amr_01: ROS_DOMAIN_ID=16 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp CYCLONEDDS_URI=file:///tmp/fms_cyclonedds_amr_01.xml`
+정상: `[robot_env] amr_01 | pinky_fms_bringup: /home/pinky/team16_18/tg_ws/install/pinky_fms_bringup (덮어쓴 설치본) | ROS_DOMAIN_ID=16 RMW=rmw_cyclonedds_cpp CYCLONEDDS_URI=file:///tmp/fms_cyclonedds_amr_01.xml`
+- `~/pinky_pro` → `~/team16_18/tg_ws` install 을 source 하고, 아래 `fms_robot_env.sh` 로 ON 과 같은 통신 설정을 적용한다.
+- ON 전이면 `GUI 에서 ON 먼저` 를 알리고 작업공간만 source 한다 (ON 뒤 다시 source). `(팀원 설치본 …)` 이 나오면 덮어쓰기 빌드가 안 된 것.
+- 로봇 코드가 이 파일이 없는 태그(`realtest-20261008`)라면, 버전은 그대로 두고 파일만 꺼내 쓴다:
+  ```bash
+  cd ~/team16_18 && git fetch origin
+  git show origin/feat/tg-fms-lane:tg_ws/src/pinky_fms_lane/robot/pinky_fms_lane_robot/scripts/robot_env.sh > ~/robot_env.sh
+  source ~/robot_env.sh amr_01
+  ```
 
-- 이 스크립트는 **백엔드 ON 이 띄운 bringup 프로세스의 환경을 그대로 복사**한다 (`/tmp/fms_amr_01.pid` 의 프로세스에서 `ROS_DOMAIN_ID`, `RMW_IMPLEMENTATION`, `CYCLONEDDS_URI` 를 읽음). 그래서 robot_localization·camera_view·teleop 이 bringup 과 똑같은 도메인·DDS(유니캐스트 피어 설정)로 통신한다.
+**(선택) 줄여 쓰기**: `~/.bashrc` 에 직접 넣는다 (자동으로 부르지 않고, 필요한 터미널에서만 `fmsenv` 를 친다. 모든 터미널에 자동 적용하면 도메인이 늘 16 으로 바뀌어 시뮬·시험과 섞일 수 있다):
+```bash
+alias fmsenv='source ~/dev_ws/team16_18/tg_ws/src/pinky_fms_lane/scripts/pc_env.sh'          # 관제 PC
+alias fmsrobot='source ~/team16_18/tg_ws/src/pinky_fms_lane/robot/pinky_fms_lane_robot/scripts/robot_env.sh'   # 로봇: fmsrobot amr_01
+```
+
+- 통신 설정(`fms_robot_env.sh`, robot_env.sh 가 부름)은 **백엔드 ON 이 띄운 bringup 프로세스의 환경을 그대로 복사**한다 (`/tmp/fms_amr_01.pid` 의 프로세스에서 `ROS_DOMAIN_ID`, `RMW_IMPLEMENTATION`, `CYCLONEDDS_URI` 를 읽음). 그래서 robot_localization·camera_view·teleop 이 bringup 과 똑같은 도메인·DDS(유니캐스트 피어 설정)로 통신한다.
 - `bringup 이 없습니다` 가 나오면 → GUI 에서 ON 을 먼저 하거나, 로봇 ID 를 확인한다. ON 을 다시 하면 이 줄을 다시 source 한다.
 - 손으로 `export ROS_DOMAIN_ID=…` 만 하면 유니캐스트 설정(CYCLONEDDS_URI)이 빠져서 bringup·관제 PC 와 서로 안 보일 수 있다.
 
