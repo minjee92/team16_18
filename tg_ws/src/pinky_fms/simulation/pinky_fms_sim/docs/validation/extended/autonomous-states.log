@@ -1,0 +1,10 @@
+test_crosswalk_clear_slows_then_resumes_and_rearms (__main__.StateChecks.test_crosswalk_clear_slows_then_resumes_and_rearms) ... ok
+test_crosswalk_obstacle_stops_then_clears (__main__.StateChecks.test_crosswalk_obstacle_stops_then_clears) ... ok
+test_junction_advance_odom_fallback_turn_and_arrival (__main__.StateChecks.test_junction_advance_odom_fallback_turn_and_arrival) ... ok
+test_persistent_crosswalk_obstacle_timeout_is_current_behavior (__main__.StateChecks.test_persistent_crosswalk_obstacle_timeout_is_current_behavior) ... ok
+test_return_without_start_pose_fails_stopped (__main__.StateChecks.test_return_without_start_pose_fails_stopped) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.001s
+
+OK
