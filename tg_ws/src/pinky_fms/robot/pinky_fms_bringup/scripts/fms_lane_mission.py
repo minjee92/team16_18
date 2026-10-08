@@ -55,7 +55,7 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 
 from pinky_autonomous.autonomous_drive_node import (
-    AutonomousDriveNode, LAMP_DRIVE, LAMP_STOP, STATE_CAUTION, STATE_COLLISION, STATE_DRIVING, STATE_CW_BLOCKED, STATE_OBSTACLE_STOP, STATE_RETURN_FAILED)
+    AutonomousDriveNode, LAMP_DRIVE, LAMP_OFF, LAMP_STOP, STATE_CAUTION, STATE_COLLISION, STATE_DRIVING, STATE_CW_BLOCKED, STATE_OBSTACLE_STOP, STATE_RETURN_FAILED)
 from pinky_autonomous.route_planner import choose_exit
 
 
@@ -781,6 +781,19 @@ class FmsLaneMission(AutonomousDriveNode):
                 return 0.0, math.copysign(min(0.8, max(0.3, 1.5 * abs(err))), err), False
         return 0.0, 0.0, True
 
+    # ---------- LED 규칙 (사용자 지정 10/9): 주행 초록 깜빡 / 감속 주황 깜빡 / 정지·일시정지 빨강 고정 / 충돌 빨강 빠른 깜빡 / 미션 종료 끔 ----------
+    LAMP_COLLISION = (1.0, 0.0, 0.0, 2, 150)
+
+    def _apply_lamp(self, lamp):
+        g = self.__dict__.get                        # 원본 __init__ 이 이 노드의 값들이 생기기 전에 LED 를 한 번 켠다
+        if 'goal' not in self.__dict__:
+            return super()._apply_lamp(LAMP_OFF)     # 시작 직후: 목적지를 받기 전이라 끔
+        if g('traffic') is None and (g('goal') is None or g('result') is not None or g('return_phase') == 'arrived'):
+            lamp = LAMP_OFF                          # 미션 종료(도착·취소·E-STOP·대기): 끔. 원본은 도착 뒤 빨강을 유지한다
+        elif self.state == STATE_COLLISION:
+            lamp = self.LAMP_COLLISION               # 충돌 거리: 일반 정지(빨강 고정)와 구분
+        super()._apply_lamp(lamp)
+
     # ---------- 상태 발행 (LCD·관제) ----------
     def _publish_status(self):
         pose = self._current_pose() if self.tf_buffer is not None else None
@@ -827,7 +840,10 @@ class FmsLaneMission(AutonomousDriveNode):
                'start': [round(v, 2) for v in self.start_pose[:2]] if self.start_pose else None,
                'localized': pose is not None, 'cmd_id': self.cmd_id,
                'pose': None if pose is None else [round(pose[0], 3), round(pose[1], 3), round(pose[2], 3)],
-               'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.traffic_role}
+               'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.traffic_role,
+               # 갈림길에서 고른 출구 (판단~출구 확인~회전~빠져나갈 때까지 유지, 일반 주행으로 돌아가면 null) — lane_traffic 출구 예측용
+               'exit': None if (self.departing or self.on_lane_decision) else (   # 출발·도착 직후 판단은 갈림길이 아니므로 내보내지 않는다
+                   self.jn_choice or (self.exit_choice if self.junction_latched or self.return_phase in ('jn_adv', 'turning') or self.lane_bias else None))}
         self.status_pub.publish(String(data=json.dumps(msg)))
 
 
