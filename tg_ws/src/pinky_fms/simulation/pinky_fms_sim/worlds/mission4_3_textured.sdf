@@ -1,0 +1,73 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.8">
+  <world name="fms_course">
+    <physics name="4ms" type="ode"><max_step_size>0.004</max_step_size><real_time_factor>1.0</real_time_factor></physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics" />
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors"><render_engine>ogre2</render_engine></plugin>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands" />
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu" />
+    <light type="directional" name="sun"><cast_shadows>false</cast_shadows><pose>0 0 5 0 0 0</pose>
+      <diffuse>1 1 1 1</diffuse><specular>0.3 0.3 0.3 1</specular><direction>-0.3 0.2 -1</direction></light>
+    <model name="ground"><static>true</static><link name="l">
+      <collision name="c"><geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry></collision>
+      <visual name="v"><geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+      <material><diffuse>0.92 0.92 0.92 1</diffuse></material></visual></link></model>
+    <model name="block_0"><static>true</static><pose>-0.3600 -0.3900 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.4800 1.4200 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.4800 1.4200 0.220</size></box></geometry>
+      <material><diffuse>0.6 0.5 0.4 1</diffuse></material></visual></link></model>
+    <model name="wall_0"><static>true</static><pose>-0.4720 -0.8710 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.0100 0.3700 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.0100 0.3700 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_1"><static>true</static><pose>-0.3970 -0.6810 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.1600 0.0100 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.1600 0.0100 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_2"><static>true</static><pose>1.0380 -0.0610 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>2.3100 0.0100 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>2.3100 0.0100 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_3"><static>true</static><pose>-0.4720 -0.2160 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.0100 0.9200 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.0100 0.9200 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_4"><static>true</static><pose>-0.1220 0.1940 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.0100 0.1000 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.0100 0.1000 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_5"><static>true</static><pose>-0.2970 0.2490 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.3600 0.0100 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.3600 0.0100 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_6"><static>true</static><pose>0.9580 0.2040 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.0100 0.5200 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.0100 0.5200 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_7"><static>true</static><pose>0.6230 0.4690 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.6800 0.0100 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.6800 0.0100 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_8"><static>true</static><pose>1.5730 0.5440 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.2200 0.3000 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.2200 0.3000 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_9"><static>true</static><pose>0.9580 0.6590 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.0100 0.3700 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.0100 0.3700 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_10"><static>true</static><pose>-0.1220 0.6990 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.0100 0.8900 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.0100 0.8900 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_11"><static>true</static><pose>2.1880 0.5440 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.0100 1.2000 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.0100 1.2000 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+    <model name="wall_12"><static>true</static><pose>1.0330 1.1490 0.110 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>2.3200 0.0100 0.220</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>2.3200 0.0100 0.220</size></box></geometry>
+      <material><diffuse>0.75 0.75 0.75 1</diffuse><specular>0.2 0.2 0.2 1</specular></material></visual></link></model>
+  <model name="course_ground_texture"><static>true</static><pose>0 0 0.001 0 0 0</pose><link name="ground_texture"><visual name="course"><cast_shadows>false</cast_shadows><geometry><mesh><uri>mission4_3_textured_assets/ground.dae</uri></mesh></geometry><material><diffuse>1 1 1 1</diffuse><pbr><metal><albedo_map>mission4_3_textured_assets/course.png</albedo_map><metalness>0</metalness><roughness>1</roughness></metal></pbr></material></visual></link></model></world>
+</sdf>

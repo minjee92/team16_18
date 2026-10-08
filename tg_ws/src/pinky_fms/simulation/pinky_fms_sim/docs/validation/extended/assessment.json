@@ -1,0 +1,73 @@
+{
+  "mode": "basic_lane_tracking",
+  "drive_enabled": true,
+  "frames": 594,
+  "valid_frames": 106,
+  "tracker_modes": {
+    "BOTH": 79,
+    "SINGLE": 27,
+    "LOST": 488
+  },
+  "guard_stops": 488,
+  "displacement_m": 0.8830268724123764,
+  "model": "best.pt",
+  "algorithm": "pinky_autonomous.LaneTracker + AutonomousDriveNode._compute_command",
+  "sim_elapsed": 89.928,
+  "path_length_m": 1.188670355306941,
+  "odom_bounds": {
+    "0": [
+      1.777584192952965e-20,
+      0.6518861730910227
+    ],
+    "1": [
+      -0.5977286416804225,
+      0.012675222510482295
+    ]
+  },
+  "first_guard": {
+    "stamp": 20.396,
+    "valid": false,
+    "mode": "LOST",
+    "steer": 0.0009711452463328418,
+    "linear": 0.0,
+    "angular": 0.0,
+    "guard_stop": true,
+    "forward_clearance_m": 0.5258350968360901,
+    "odom_xy": [
+      0.6500052683025477,
+      -0.5956507056982581
+    ],
+    "detections": [
+      {
+        "class": "crosswalk",
+        "confidence": 0.9147040247917175
+      }
+    ]
+  },
+  "last_frame": {
+    "stamp": 94.548,
+    "valid": false,
+    "mode": "LOST",
+    "steer": 0.0,
+    "linear": 0.0,
+    "angular": 0.0,
+    "guard_stop": true,
+    "forward_clearance_m": 0.5288503766059875,
+    "odom_xy": [
+      0.6499668670919005,
+      -0.5977286416804225
+    ],
+    "detections": [
+      {
+        "class": "crosswalk",
+        "confidence": 0.9071420431137085
+      }
+    ]
+  },
+  "detected_class_frames": {
+    "right_lane": 86,
+    "left_lane": 99,
+    "crosswalk": 500,
+    "cross_lane": 1
+  }
+}

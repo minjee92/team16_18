@@ -1,0 +1,62 @@
+{
+  "pt": [
+    {
+      "frame": "camera_before",
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.8579498529434204
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.7825071215629578
+        }
+      ],
+      "mask_count": 2
+    },
+    {
+      "frame": "camera_after",
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9270543456077576
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.879539430141449
+        }
+      ],
+      "mask_count": 2
+    }
+  ],
+  "ncnn": [
+    {
+      "frame": "camera_before",
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.87685227394104
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.6918965578079224
+        }
+      ],
+      "mask_count": 2
+    },
+    {
+      "frame": "camera_after",
+      "detections": [
+        {
+          "class": "right_lane",
+          "confidence": 0.9117852449417114
+        },
+        {
+          "class": "left_lane",
+          "confidence": 0.8509162664413452
+        }
+      ],
+      "mask_count": 2
+    }
+  ]
+}

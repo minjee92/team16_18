@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "samples": {
+    "clock": 621,
+    "joints": 620,
+    "scan": 26,
+    "odom": 128,
+    "camera_info": 79,
+    "image": 32
+  },
+  "scan_samples": 640,
+  "scan_finite": 640,
+  "scan_min_m": 0.145928755402565,
+  "drive_distance_m": 0.08112000037484027,
+  "stop_drift_m": 0.0,
+  "image_width": 1280,
+  "image_height": 720,
+  "camera_frame": "amr_01/front_camera_link",
+  "odom_frame": "amr_01/odom",
+  "odom_child_frame": "amr_01/base_footprint"
+}
