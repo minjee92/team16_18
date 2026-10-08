@@ -53,6 +53,8 @@
             <!-- 앞 사물(초음파 + 라이다 앞 통로, 지도 벽 제외): 0.35 m 감속, 0.15 m 정지, 횡단보도 확인 중 0.30 m 정지 -->
             <param name="obstacle_dist" value="0.35"/>
             <param name="ultrasonic_stop_dist" value="0.15"/>
+            <!-- 갈림길: 정지선 근처에서 멈춘다 (0.25 m 더 들어가면 이 트랙은 앞 벽에 붙음, 2026-10-08 amr_02) -->
+            <param name="junction_advance_dist" value="0.08"/>
             <param name="return_arrive_dist" value="$(var return_arrive_dist)"/>
             <param name="enable_return_home" value="true"/>
             <param name="enable_lcd" value="false"/>

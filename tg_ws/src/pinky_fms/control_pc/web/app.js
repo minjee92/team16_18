@@ -285,7 +285,7 @@ function updateCard(r) {
     ensureLaneSub(r);
     renderReady(r);
     const t = r.task;
-    const ln = r.lane && Date.now() - r.lane.t < 3000 ? r.lane : null;
+    const ln = r.stack === 'lane' && r.lane && Date.now() - r.lane.t < 3000 ? r.lane : null;   // 차선 스택이 아니면 남은 노드의 옛 상태를 보여 주지 않는다
     if (ln) {
         $('task').className = `text-[11px] ${ln.state === 'FAILED' ? 'text-rose-400' : ln.state === 'ARRIVED' ? 'text-sky-400' : 'text-violet-300'}`;
         $('task').textContent = `Lane Following · ${ln.state}` + (ln.detail ? ` · ${ln.detail}` : '') + (ln.dist !== null && ln.dist !== undefined ? ` · ${ln.dist.toFixed(1)} m` : '');
@@ -343,6 +343,7 @@ function updateCard(r) {
 }
 
 // ---- 기술 스택 준비 상태 (선택한 미션 기준) ----
+const LANE_NODE_TIMEOUT_MS = 40000;   // 차선 스택을 켠 뒤 lane_status 가 이만큼 없으면 노드가 죽은 것으로 본다
 function readyChecks(r) {
     const rd = r.ready && Date.now() - r.ready.t < 3000 ? r.ready : null;
     const ok = (v) => v ? 'ok' : 'no';
@@ -351,7 +352,16 @@ function readyChecks(r) {
     if (missionType === 'lane') {
         items.push(['Lane stack', r.stack === 'lane' ? 'ok' : 'no', 'robot_lane 스택 실행 (미션을 고르면 켜짐)']);
         items.push(['AMCL', rd.amcl === 'active' ? 'ok' : rd.amcl ? 'wait' : 'no', `AMCL 상태: ${rd.amcl || '없음'}`]);
-        items.push(['Lane node', rd.lane ? 'ok' : r.stack === 'lane' ? 'wait' : 'no', rd.lane ? `차선 노드: ${rd.lane} ${rd.lane_detail || ''}` : '차선 노드(YOLO·카메라) 준비 중이거나 꺼짐']);
+        const laneUp = !!rd.lane || (!!r.lane && Date.now() - r.lane.t < 3000);
+        // navStartedAt 은 GUI 가 스택을 켤 때만 기록된다: 새로고침 뒤에는 처음 관찰한 시각을 기준으로 삼는다
+        if (r.stack !== 'lane') r.laneSeenStackAt = null;
+        else if (!r.navStartedAt && !r.laneSeenStackAt) r.laneSeenStackAt = Date.now();
+        const laneSince = r.navStartedAt || r.laneSeenStackAt;
+        const laneDead = !laneUp && r.stack === 'lane' && !!laneSince && Date.now() - laneSince > LANE_NODE_TIMEOUT_MS;
+        items.push(['Lane node', laneUp ? 'ok' : laneDead ? 'no' : r.stack === 'lane' ? 'wait' : 'no',
+            laneUp ? `차선 노드: ${rd.lane || r.lane.state} ${rd.lane_detail || ''}`
+                : laneDead ? '차선 노드가 시작되지 않음 – Log(Launch 출력)에서 카메라/YOLO 오류 확인'
+                : '차선 노드(YOLO·카메라) 준비 중이거나 꺼짐']);
         items.push(['Localized', ok(rd.localized), 'AMCL 이 켜진 뒤 초기 위치를 받았는가 (Init Pose)']);
     } else {
         items.push(['Nav2', rd.nav === 'active' ? 'ok' : rd.nav ? 'wait' : 'no', `bt_navigator 상태: ${rd.nav || '없음 (미션을 고르면 켜짐)'}`]);
@@ -641,7 +651,7 @@ window.clearAllStaged = function () {
 // ---- Lane Following 미션 (실행 층: robot_lane 스택, 상태는 /<ns>/lane_status) ----
 const laneTopics = {};
 function laneActive(r) {
-    return !!r.lane && Date.now() - r.lane.t < 3000 && !['ARRIVED', 'FAILED'].includes(r.lane.state);
+    return r.stack === 'lane' && !!r.lane && Date.now() - r.lane.t < 3000 && !['ARRIVED', 'FAILED', 'IDLE'].includes(r.lane.state);
 }
 function ensureLaneSub(r) {
     if (!ros || !r.ns) return;
