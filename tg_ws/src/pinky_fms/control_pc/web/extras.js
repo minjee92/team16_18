@@ -29,6 +29,45 @@ window.publishInitialPose = function (robotId, x, y, yaw) {
     return _publishInitialPose.apply(this, arguments);
 };
 
+// ---- 차선 띠 판정: 차선 지도(빈 칸 = 차선)를 GUI 에서 고른 지도와 따로 불러 둔다 ----
+const LANE_OFF_TOL = 0.06;      // 차선 띠에서 이보다 멀면 '차선 밖' (실측: 차선 위 0~3 cm, 2026-10-08 23:13 amr_02 차선 밖 15 cm)
+const laneMap = { meta: null, w: 0, h: 0, free: null, loading: false };
+
+async function loadLaneMap() {
+    if (laneMap.meta || laneMap.loading) return;
+    laneMap.loading = true;
+    try {
+        const list = await api('GET', '/maps');
+        const m = list.find(x => /_lanes(_|$)/.test(x.name));
+        if (!m || !m.image.toLowerCase().endsWith('.pgm')) return;
+        const res = await fetch(`${BACKEND_URL}/maps/${m.name}/image`);
+        if (!res.ok) return;
+        const { w, h, data } = parsePgm(await res.arrayBuffer());
+        const free = new Uint8Array(w * h);
+        for (let k = 0; k < w * h; k++) {
+            const p = m.negate ? data[k] / 255 : (255 - data[k]) / 255;
+            free[k] = p < m.free_thresh ? 1 : 0;
+        }
+        Object.assign(laneMap, { meta: m, w, h, free });
+    } catch (e) { /* 백엔드가 늦게 뜨면 다음에 다시 */ }
+    finally { laneMap.loading = false; }
+}
+
+// 로봇 위치에서 가장 가까운 차선 칸까지 거리(m). 차선 지도·위치를 모르면 null (판정하지 않음)
+function laneOffset(r) {
+    const p = r.lane && Array.isArray(r.lane.pose) && Date.now() - r.lane.t < 5000 ? r.lane.pose : null;   // 오래된 위치로는 판정하지 않는다
+    const m = laneMap.meta;
+    if (!p || !m) return null;
+    const res = m.resolution, c0 = Math.floor((p[0] - m.origin[0]) / res), r0 = laneMap.h - 1 - Math.floor((p[1] - m.origin[1]) / res);
+    const R = Math.ceil(0.3 / res);
+    let best = Infinity;
+    for (let dr = -R; dr <= R; dr++) for (let dc = -R; dc <= R; dc++) {
+        const rr = r0 + dr, cc = c0 + dc;
+        if (rr >= 0 && rr < laneMap.h && cc >= 0 && cc < laneMap.w && laneMap.free[rr * laneMap.w + cc]) best = Math.min(best, Math.hypot(dr, dc) * res);
+    }
+    return best;
+}
+
 function waitIdle(r, ms) {
     return new Promise((resolve) => {
         const t0 = Date.now();
@@ -50,6 +89,10 @@ async function dockOne(r, quiet) {
     r.staged = null;
 
     if (r.stack === 'lane') {               // 차선 스택: 차선을 따라 편도로 도크까지 (fms_lane_mission 'home')
+        const off = laneOffset(r);
+        if (off !== null && off > LANE_OFF_TOL) {
+            return fail(`차선 밖(차선에서 ${(off * 100).toFixed(0)} cm)에 있어 차선 복귀가 불가합니다 — 로봇을 차선 위로 옮긴 뒤 Init Pose 를 지정하세요`);
+        }
         if (!sendLaneCmd(r, 'home', { x: h.x, y: h.y })) return false;
         r.goalPose = { x: h.x, y: h.y, yaw: h.yaw };
         toast(`${n} RETURN DOCK: 차선을 따라 (${h.x.toFixed(2)}, ${h.y.toFixed(2)}) 로 복귀`, 'info');
@@ -98,7 +141,7 @@ document.getElementById('btn-return')?.addEventListener('click', returnAllDock);
 // 여기서 더 하는 것: 차선 로봇 정지(lane 미션은 조정 층을 거치지 않는다), GUI 의 자동 출발 예약 해제, 조정 층 처리 확인
 let estopAt = 0;
 const ESTOP_ACK_MS = 2000;
-let estopAckTopic = null, estopAckKey = null, estopAcked = 0;
+let estopAckTopic = null, estopAckKey = null, estopAcked = 0, estopAckShownFor = 0, estopLaneSent = [];
 
 function ensureEstopAck() {
     if (!ros) return;
@@ -111,7 +154,13 @@ function ensureEstopAck() {
         if (d.cmd !== 'E_STOP') return;
         estopAcked = Date.now();
         const ids = (d.stopped || []).map(displayName);
-        recEvent('ros', `E_STOP ack: ${ids.length ? ids.join(', ') + ' 정지' : '진행 중인 주행 없음'}`);
+        const lane = new Set([...(d.lane || []).map(displayName), ...estopLaneSent]);     // 조정 층이 본 차선 로봇 + GUI 가 cancel 을 보낸 로봇
+        const parts = [];
+        if (ids.length) parts.push(`Nav2 주행 ${ids.length}대 정지 (${ids.join(', ')})`);
+        if (lane.size) parts.push(`차선 주행 ${lane.size}대 정지 요청 (${[...lane].join(', ')})`);
+        const msg = `E-STOP 확인: ${parts.length ? parts.join(' · ') : '진행 중인 주행 없음'}`;
+        if (estopAckShownFor !== estopAt) { estopAckShownFor = estopAt; toast(msg, 'info'); }   // ack 가 여러 번 와도 한 번만
+        else recEvent('ros', msg);
     });
     estopAckKey = key;
 }
@@ -132,6 +181,7 @@ document.getElementById('btn-estop')?.addEventListener('click', () => {
         updateCard(r);
     });
     refreshStartAll();
+    estopLaneSent = lanes;
     if (lanes.length) toast(`E-STOP: 차선 주행 정지 명령 → ${lanes.join(', ')}`, 'err');
     const sentAt = estopAt;
     setTimeout(() => {
@@ -222,5 +272,54 @@ wrapGlobal('turnOff', (id) => `OFF ${id}`);
 document.getElementById('btn-estop')?.addEventListener('click', () => recEvent('ui', 'GLOBAL E-STOP'));
 document.getElementById('btn-return')?.addEventListener('click', () => recEvent('ui', 'RETURN DOCK (전체)'));
 
+// ---------- 차선 이탈 경고: /fleet/lane_traffic_state 의 alerts [{robot, reason: off_lane|lost, pose}] ----------
+const ALERT_TEXT = { off_lane: '차선 이탈', lost: '차선 인식 실패' };
+let laneStateKey = null;
+function ensureLaneState() {
+    if (!ros) return;
+    const key = `lts|${rosGeneration}`;
+    if (laneStateKey === key) return;
+    const t = new ROSLIB.Topic({ ros, name: '/fleet/lane_traffic_state', messageType: 'std_msgs/msg/String' });
+    t.subscribe((m) => {
+        let d;
+        try { d = JSON.parse(m.data); } catch (e) { return; }
+        const now = Date.now(), seen = new Set();
+        (Array.isArray(d.alerts) ? d.alerts : []).forEach(a => {
+            const r = robots[a && a.robot];
+            if (!r) return;
+            seen.add(r.id);
+            const reason = ALERT_TEXT[a.reason] || a.reason || '이상';
+            if (!r.laneAlert || r.laneAlert.reason !== reason) {
+                toast(`${displayName(r.id)}: ${reason} – 수동 개입 필요`, 'err');
+            }
+            r.laneAlert = { reason, t: now };
+            updateCard(r);
+        });
+        Object.values(robots).forEach(r => { if (r.laneAlert && !seen.has(r.id)) { r.laneAlert = null; updateCard(r); } });
+    });
+    laneStateKey = key;
+}
+
+// 카드에 차선 이탈 배지 (app.js 카드 템플릿은 그대로 두고 상태 배지 뒤에 붙인다)
+const _updateCard = window.updateCard;
+window.updateCard = function (r) {
+    const ret = _updateCard.apply(this, arguments);
+    const anchor = document.getElementById(`${r.id}-errbadge`);
+    if (anchor) {
+        let b = document.getElementById(`${r.id}-lanealert`);
+        if (!b) {
+            b = document.createElement('span');
+            b.id = `${r.id}-lanealert`;
+            b.className = 'hidden ml-1 text-[10px] bg-rose-600 text-white px-1.5 py-0.5 rounded font-bold animate-pulse';
+            anchor.after(b);
+        }
+        const a = r.laneAlert && Date.now() - r.laneAlert.t < 3000 ? r.laneAlert : null;     // 상태가 끊기면 3초 뒤 지운다
+        b.classList.toggle('hidden', !a);
+        if (a) { b.textContent = `${a.reason} – 수동 개입 필요`; b.title = '로봇을 차선 위로 옮긴 뒤 Init Pose 를 다시 지정하세요'; }
+    }
+    return ret;
+};
+
 pollRec();
-setInterval(() => { pollRec(); if (rosOnline) ensureEstopAck(); }, 2000);
+loadLaneMap();
+setInterval(() => { pollRec(); loadLaneMap(); if (rosOnline) { ensureEstopAck(); ensureLaneState(); } }, 2000);
