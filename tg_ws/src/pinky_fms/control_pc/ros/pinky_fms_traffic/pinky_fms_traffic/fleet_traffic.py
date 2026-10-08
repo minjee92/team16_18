@@ -68,6 +68,7 @@ class TState:
         self.gs = None              # bt_navigator/get_state 클라이언트
         self.mn = None              # lifecycle_manager_navigation/manage_nodes 클라이언트
         self.lc_pending = False
+        self.lc_sent_t = 0.0        # 마지막 Nav2 상태 질의 시각
         self.lc_last_fix = 0.0
         self.lc_bad_since = None    # bt_navigator 가 active 가 아니게 된 시각 (켜지는 중일 수 있어 30초 지켜본 뒤 복구)
         self.route_id = 0           # 마주침: 지금 따라가는 고정 경로 번호 (0 = Nav2 가 자유롭게 계획)
@@ -271,9 +272,11 @@ class FleetTraffic(FleetCoordinator):
             if self.robot_state(r) == 'OFFLINE' or not r.localized:
                 continue
             st = self.st(r)
+            if st.lc_pending and time.monotonic() - st.lc_sent_t > 10.0:
+                st.lc_pending = False       # 응답이 유실된 질의 (amr_02 에서 서비스 응답 유실 확인): 막히지 않게 다시 묻는다
             if st.lc_pending or not st.gs.service_is_ready():
                 continue
-            st.lc_pending = True
+            st.lc_pending, st.lc_sent_t = True, time.monotonic()
             st.gs.call_async(GetState.Request()).add_done_callback(lambda f, r=r: self._on_nav_state(r, f))
 
     def _on_nav_state(self, r, fut):
