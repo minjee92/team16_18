@@ -729,10 +729,11 @@ function autoPrepare() {
     });
     if (list.length) prepareMission(list);
 }
-function stackNeedsStart(r) { const w = wantedStack(); return !!w && !!r.proc && r.stack !== w; }
+// r.stackOverride: 미션과 다른 스택을 잠시 쓰는 로봇 (예: Lane Following 중 RETURN DOCK 을 Nav2 로). 설정돼 있으면 자동 전환하지 않는다
+function stackNeedsStart(r) { const w = r.stackOverride || wantedStack(); return !!w && !!r.proc && r.stack !== w; }
 
 async function prepareStack(r, force) {
-    const want = wantedStack();
+    const want = r.stackOverride || wantedStack();
     if (!want || !r.proc || r.stackStarting || (!force && !stackNeedsStart(r))) return false;
     if (effectiveState(r) === 'BUSY' || laneActive(r)) {
         toast(`${displayName(r.id)}: 진행 중인 미션이 있어 주행 스택을 바꾸지 않았습니다 (취소한 뒤 미션을 다시 고르세요)`, 'err');
@@ -741,7 +742,7 @@ async function prepareStack(r, force) {
     }
     r.stackStarting = true;
     let res;
-    try { res = await api('POST', `/robots/${r.id}/stack`, { stack: want, map: mapName() }); }
+    try { res = await api('POST', `/robots/${r.id}/stack`, { stack: want, map: r.stackMapOverride || mapName() }); }   /* stackMapOverride: 잠시 다른 지도 (Nav2 도크는 차선 지운 지도) */
     catch (e) { toast(`${displayName(r.id)} ${want === 'lane' ? 'Lane Following' : 'Nav2'} 시작 실패: ${e.message}`, 'err'); r.autoKey = prepKey(); return false; }
     finally { r.stackStarting = false; }
     if (res && res.started === false) { r.stack = want; updateCard(r); return false; }    // 같은 지도로 이미 실행 중
