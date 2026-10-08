@@ -252,7 +252,8 @@ class LaneMockRobot(Node):
         self.pub.publish(String(data=json.dumps({
             'robot': self.ns, 'mission': 'lane', 'state': state, 'detail': detail, 'dist': round(rem, 2),
             'pose': [round(self.x, 3), round(self.y, 3), round(self.yaw, 3)], 'localized': True,
-            'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.role, 'collisions': self.collisions})))
+            'traffic': self.traffic, 'traffic_id': self.traffic_id, 'role': self.role, 'collisions': self.collisions,
+            'exit': self._exit_dir() if self.jn is not None else None})))
 
 
 def main():

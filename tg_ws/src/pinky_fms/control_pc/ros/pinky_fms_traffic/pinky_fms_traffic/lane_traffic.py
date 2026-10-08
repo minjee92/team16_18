@@ -272,13 +272,18 @@ class LaneTraffic(Node):
                     self.get_logger().info(f'🚥 갈림길 ({j["c"][0]:.2f},{j["c"][1]:.2f}) 우선: {o.id} (먼저 정지)')
             if o is None:
                 continue
-            # 우선 로봇이 고른 출구 (detail 'junction check (left)' 등) → 출구 차선 방향 (그때의 로봇 방향 기준)
-            if j['exit'] is None and o.pose is not None:
-                m = re.search(r'\((left|right|straight|back)\)', str(o.st.get('detail', '')))
-                if m:
-                    off = {'left': math.pi / 2, 'right': -math.pi / 2, 'straight': 0.0, 'back': math.pi}[m.group(1)]
-                    j['exit'] = (m.group(1), o.pose[2] + off)
-                    self.get_logger().info(f'🚥 갈림길 {o.id} 출구: {m.group(1)}')
+            # 우선 로봇이 고른 출구 → 출구 차선 방향. lane_status 'exit' 필드(2026-10-08 추가)를 먼저 쓰고, 없으면(배포 전 노드)
+            # detail 'junction check (left)' 등에서 읽는다. 한 번 보면 우선권이 풀릴 때까지 기억한다 (출구 확인을 통과하면
+            # detail 에서 출구가 사라진다). 방향 기준은 갈림길에 정지했을 때의 방향(owner_pose) — 회전 중에 읽어도 틀어지지 않게.
+            if j['exit'] is None and j['owner_pose'] is not None:
+                ex = o.st.get('exit')
+                if ex not in ('left', 'right', 'straight', 'back'):
+                    m = re.search(r'\((left|right|straight|back)\)', str(o.st.get('detail', '')))
+                    ex = m.group(1) if m and str(o.st.get('detail', '')).startswith('junction') else None
+                if ex:
+                    off = {'left': math.pi / 2, 'right': -math.pi / 2, 'straight': 0.0, 'back': math.pi}[ex]
+                    j['exit'] = (ex, j['owner_pose'][2] + off)
+                    self.get_logger().info(f'🚥 갈림길 {o.id} 출구: {ex}')
             # 출구 차선 위 로봇: 우선 로봇이 곧 그쪽으로 나간다 → 세우면 교착 (23:44 실물) → hold 대신 바로 양보
             if j['exit'] is not None:
                 for r in list(self.robots.values()):
