@@ -106,7 +106,7 @@ async function dockLaneViaNav(r, h, t0, fail) {
         const st = r.task && r.task.mission_id === mid ? r.task.state : '종료';
         await restoreLane(r, st === 'SUCCEEDED' ? '도크 도착' : `도크 ${st}`);
     })();
-    return true;
+    return mid;
 }
 
 function waitIdle(r, ms) {
@@ -121,7 +121,7 @@ function waitIdle(r, ms) {
     });
 }
 
-// 한 로봇 복귀. 반환: 복귀 명령을 보냈으면 true
+// 한 로봇 복귀. 반환: 보낸 도크 미션 id (실패하면 false). 순서는 아래 도크 큐가 정한다
 async function dockOne(r, quiet) {
     const n = displayName(r.id), h = getHome(r), t0 = Date.now();
     const fail = (msg) => { if (!quiet) toast(`${n}: ${msg}`, 'err'); return false; };
@@ -141,32 +141,90 @@ async function dockOne(r, quiet) {
         if (estopAt >= t0) return fail('E-STOP 으로 복귀를 중단했습니다');
     }
     if (!canStart(r)) return fail('대기(IDLE)이고 위치가 확인된 상태에서만 복귀합니다');
-    const ok = !!launchNav(r.id, h.x, h.y, h.yaw);
+    const mid = launchNav(r.id, h.x, h.y, h.yaw);
     updateCard(r); refreshStartAll();
-    return ok;
+    return mid || false;
+}
+
+// ---- 도크 큐: 한 대씩 순서대로 (동시에 보내면 좁은 트랙에서 경로가 엇갈려 마주침 양보에 걸린다: 2026-10-09 00:34 실물) ----
+const DOCK_STEP_MS = 90000;           // 앞 로봇이 출발한 뒤 이 시간이 지나면 끝나지 않았어도 다음 로봇을 보낸다
+const dockQueue = [];                 // 기다리는 로봇 id (앞에서부터)
+let dockActive = null, dockRunning = false;
+
+function dockDist(r) {
+    const p = currentPose(r), h = getHome(r);
+    return p && h ? Math.hypot(p.x - h.x, p.y - h.y) : Infinity;
+}
+
+// 기다리는 동안은 그 자리에 세워 둔다 (차선 주행은 cancel, Nav2 미션은 취소)
+function holdForDock(r) {
+    if (laneActive(r)) sendLaneCmd(r, 'cancel');
+    else if (effectiveState(r) === 'BUSY') sendMission('CANCEL', r.id);
+    r.staged = null;
+}
+
+function enqueueDock(list) {
+    const added = list.filter(r => r.id !== dockActive && !dockQueue.includes(r.id));
+    added.forEach(r => { dockQueue.push(r.id); if (dockActive || dockQueue[0] !== r.id) holdForDock(r); });
+    Object.values(robots).forEach(updateCard);
+    runDockQueue();
+    return added;
+}
+
+async function runDockQueue() {
+    if (dockRunning) return;
+    dockRunning = true;
+    try {
+        while (dockQueue.length) {
+            const id = dockQueue.shift(), r = robots[id];
+            if (!r) continue;
+            dockActive = id;
+            Object.values(robots).forEach(updateCard);
+            const t0 = Date.now();
+            const mid = await dockOne(r, false);
+            if (mid && estopAt < t0) {
+                const end = () => r.task && r.task.mission_id === mid && ['SUCCEEDED', 'FAILED', 'CANCELED'].includes(r.task.state);
+                const done = await waitFor(() => end() || estopAt >= t0 || !r.proc, DOCK_STEP_MS);
+                if (!done && dockQueue.length) toast(`${displayName(id)} 도크가 ${DOCK_STEP_MS / 1000}초 안에 끝나지 않아 다음 로봇을 보냅니다`, 'err');
+            }
+            dockActive = null;
+            if (estopAt >= t0) {                       // E-STOP: 남은 도크는 모두 취소
+                if (dockQueue.length) toast(`E-STOP: 도크 대기 ${dockQueue.length}대 취소 (${dockQueue.map(displayName).join(', ')})`, 'err');
+                dockQueue.length = 0;
+            }
+        }
+    } finally {
+        dockActive = null; dockRunning = false;
+        Object.values(robots).forEach(updateCard);
+    }
 }
 
 window.returnDock = function (id) {
     const r = robots[id];
     if (!r) return;
+    if (id === dockActive || dockQueue.includes(id)) { toast(`${displayName(id)}: 이미 도크 ${id === dockActive ? '중' : '대기 중'}입니다 (멈추려면 Cancel)`, 'info'); return; }
     const h = getHome(r);
+    if (!h) { toast(`${displayName(id)}: 도크(초기 위치)가 없습니다. 먼저 Init Pose 를 지정하세요`, 'err'); return; }
     const laneNote = r.stack === 'lane' ? '\n차선 주행 중이면 Nav2 로 잠시 바꿔 복귀한 뒤 차선 스택으로 되돌립니다. 도크 중 다른 로봇과의 간섭에 주의하세요.' : '';
-    if (h && !confirm(`${displayName(id)} 를 도크(초기 위치 ${h.x.toFixed(2)}, ${h.y.toFixed(2)})로 복귀시킬까요?\n진행 중인 미션은 취소됩니다.${laneNote}`)) return;
-    dockOne(r, false);
+    const busy = dockActive || dockQueue.length;
+    const queueNote = busy ? `\n다른 로봇이 도크 중이라 대기열 ${dockQueue.length + 1}번째로 들어가고, 차례가 올 때까지 그 자리에 멈춰 있습니다.` : '';
+    if (!confirm(`${displayName(id)} 를 도크(초기 위치 ${h.x.toFixed(2)}, ${h.y.toFixed(2)})로 복귀시킬까요?\n진행 중인 미션은 취소됩니다.${laneNote}${queueNote}`)) return;
+    enqueueDock([r]);
+    if (busy && dockQueue.includes(id)) toast(`${displayName(id)} 도크 대기 (${dockQueue.indexOf(id) + 1 + (dockActive ? 1 : 0)}번째): 앞 로봇의 도크가 끝나면 출발합니다`, 'info');
 };
 
 async function returnAllDock() {
     const on = Object.values(robots).filter(r => r.proc && effectiveState(r) !== 'OFFLINE');
     if (!on.length) { toast('켜진 로봇이 없습니다', 'err'); return; }
-    const withHome = on.filter(r => getHome(r)), noHome = on.filter(r => !getHome(r));
+    const withHome = on.filter(r => getHome(r)).sort((a, b) => dockDist(a) - dockDist(b));     // 도크에 가까운 로봇부터
+    const noHome = on.filter(r => !getHome(r));
     if (!withHome.length) { toast('도크(초기 위치)가 지정된 로봇이 없습니다. 먼저 Init Pose 를 지정하세요', 'err'); return; }
-    const lines = withHome.map(r => { const h = getHome(r); return `  ${displayName(r.id)} → (${h.x.toFixed(2)}, ${h.y.toFixed(2)})`; }).join('\n');
+    const lines = withHome.map((r, i) => { const h = getHome(r); return `  ${i + 1}. ${displayName(r.id)} → (${h.x.toFixed(2)}, ${h.y.toFixed(2)})`; }).join('\n');
     const skip = noHome.length ? `\n\n제외(Init Pose 없음): ${noHome.map(r => displayName(r.id)).join(', ')}` : '';
-    const laneNote = withHome.some(r => r.stack === 'lane') ? '\n차선 로봇은 Nav2 로 잠시 바꿔 복귀합니다. 도크 중 서로 간섭할 수 있으니 주의하세요.' : '';
-    if (!confirm(`${withHome.length}대를 도크(초기 위치)로 복귀시킬까요? 진행 중인 미션은 취소됩니다.${laneNote}\n\n${lines}${skip}`)) return;
-    const res = await Promise.all(withHome.map(r => dockOne(r, false)));
-    const n = res.filter(Boolean).length;
-    toast(`RETURN DOCK: ${n}/${withHome.length}대 복귀 출발${n < withHome.length ? ' (실패한 로봇은 알림 확인)' : ''}`, n ? 'ok' : 'err');
+    const laneNote = withHome.some(r => r.stack === 'lane') ? '\n차선 로봇은 Nav2 로 잠시 바꿔 복귀합니다.' : '';
+    if (!confirm(`${withHome.length}대를 한 대씩 순서대로 도크(초기 위치)로 복귀시킬까요? 진행 중인 미션은 취소되고, 차례를 기다리는 로봇은 그 자리에 멈춰 있습니다.${laneNote}\n\n${lines}${skip}`)) return;
+    const added = enqueueDock(withHome);
+    toast(`RETURN DOCK: ${added.length}대를 순서대로 복귀시킵니다 (${withHome.map(r => displayName(r.id)).join(' → ')})`, 'info');
 }
 document.getElementById('btn-return')?.addEventListener('click', returnAllDock);
 
@@ -203,6 +261,7 @@ document.getElementById('btn-estop')?.addEventListener('click', () => {
     if (!rosOnline) return;                             // app.js 가 이미 '연결 안 됨' 을 알렸다
     estopAt = Date.now();
     ensureEstopAck();
+    if (dockQueue.length) { toast(`E-STOP: 도크 대기 ${dockQueue.length}대 취소 (${dockQueue.map(displayName).join(', ')})`, 'err'); dockQueue.length = 0; }
     const lanes = [];
     Object.values(robots).forEach(r => {
         r.pendingGo = false;                            // Init Pose 를 받으면 자동 출발하던 예약
@@ -297,6 +356,12 @@ wrapGlobal('stageGoal', (id, x, y, yaw) => `Set Goal ${id} (${f2(x)}, ${f2(y)}, 
 wrapGlobal('goOrPrompt', (id) => `Go ${id}`);
 wrapGlobal('startAllStaged', () => 'Start All');
 wrapGlobal('cancelMission', (id) => `Cancel ${id}`);
+const _cancelMission = window.cancelMission;
+window.cancelMission = function (id) {
+    const i = dockQueue.indexOf(id);
+    if (i >= 0) { dockQueue.splice(i, 1); toast(`${displayName(id)} 도크 대기 취소`, 'info'); Object.values(robots).forEach(updateCard); }
+    return _cancelMission.apply(this, arguments);
+};
 wrapGlobal('returnDock', (id) => `Return Dock ${id}`);
 wrapGlobal('setMissionType', (t) => `Mission ${t}`);
 wrapGlobal('setTrafficMode', (m) => `Traffic Management ${m}`);
@@ -350,6 +415,17 @@ window.updateCard = function (r) {
         const a = r.laneAlert && Date.now() - r.laneAlert.t < 3000 ? r.laneAlert : null;     // 상태가 끊기면 3초 뒤 지운다
         b.classList.toggle('hidden', !a);
         if (a) { b.textContent = `${a.reason} – 수동 개입 필요`; b.title = '로봇을 차선 위로 옮긴 뒤 Init Pose 를 다시 지정하세요'; }
+        let q = document.getElementById(`${r.id}-dockq`);
+        if (!q) {
+            q = document.createElement('span');
+            q.id = `${r.id}-dockq`;
+            q.className = 'hidden ml-1 text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold';
+            b.after(q);
+        }
+        const qi = dockQueue.indexOf(r.id);
+        const label = r.id === dockActive ? '도크 중' : qi >= 0 ? `도크 대기 (${qi + 1 + (dockActive ? 1 : 0)}번째)` : '';
+        q.classList.toggle('hidden', !label);
+        q.textContent = label;
     }
     return ret;
 };
