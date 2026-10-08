@@ -12,7 +12,8 @@
   issues.log      WARN 이상 ROS 로그 + 실패한 미션 (분석은 여기부터)
   missions.log    /fleet/mission_state 변화
   launch/<로봇>_<스택>.log   로봇에서 실행한 launch 출력 끝부분 (stop 때 SSH 로 1회 수집)
-  summary.txt     기간·로그 수준별 개수·노드별 경고 수·미션 결과
+  video_<로봇>.mp4  주행 영상 (camera/rec, 차선 주행 스택이 떠 있을 때만 나온다. 실제 시각 기준 5 fps)
+  summary.txt     기간·로그 수준별 개수·노드별 경고 수·미션 결과·영상
 ROS 통신은 별도 프로세스(ros2 bag, 변환 스크립트)에서 한다. 백엔드 자체는 ROS 를 import 하지 않는다.
 """
 import json
@@ -36,10 +37,11 @@ WS_SETUP = os.environ.get('FMS_WS_SETUP', str(Path.home() / 'pinky/install/setup
 ROBOTS_FILE = Path(os.environ.get(
     'FMS_ROBOTS_FILE', HERE.parents[0] / 'ros/pinky_fms_core/config/robots.yaml'))
 ENV_SCRIPT = HERE.parents[0] / 'fms_env.sh'
-# 기록할 토픽: 관제 토픽 전부 + 로봇 namespace 아래 분석에 쓰는 것 (카메라 영상은 크기 때문에 제외)
+# 기록할 토픽: 관제 토픽 전부 + 로봇 namespace 아래 분석에 쓰는 것.
+# 영상은 차선 노드의 기록용 camera/rec(JPEG 320×240, 5 Hz)만. 원본 camera/compressed 는 크고 로봇 부하가 커서 제외
 TOPICS = (r'^/fleet/.*|^/rosout$|^/[a-z][a-z0-9_]*/(amcl_pose|plan|received_global_plan|cmd_vel|cmd_vel_nav|odom|scan'
           r'|scan_robotfree|behavior_tree_log|other_robots|fms_status|lane_status|lane_cmd|lane_traffic_cmd|escape_status|escape_cmd'
-          r'|initialpose|goal_pose|tf|tf_static|battery_state|navigate_to_pose/_action/status'
+          r'|initialpose|goal_pose|tf|tf_static|battery_state|camera/rec|navigate_to_pose/_action/status'
           r'|navigate_through_poses/_action/status|backup/_action/status|drive_on_heading/_action/status)$')
 MAX_EVENTS = 20000
 ACTIVE_FILE = LOG_ROOT / '.fms_rec_active.json'     # 백엔드가 기록 중에 재시작돼도 남은 ros2 bag 을 찾아 끝내기 위함
@@ -178,11 +180,11 @@ def _finalize(rec):
         cmd = (f'{_env_prefix()} && exec python3 {shlex.quote(str(HERE / "rec_extract.py"))} '
                f'{shlex.quote(str(d))} {rec["started"]:.3f}')
         try:
-            r = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True, timeout=300)
+            r = subprocess.run(['bash', '-c', cmd], capture_output=True, text=True, timeout=900)
             if r.returncode != 0:
                 errors.append(f'로그 변환 실패: {(r.stderr or r.stdout).strip()[-500:]}')
         except subprocess.TimeoutExpired:
-            errors.append('로그 변환 시간 초과 (300 s)')
+            errors.append('로그 변환 시간 초과 (900 s)')
     else:
         errors.append('bag 폴더가 없음: ros2 bag 이 시작되지 못함 (record.log 확인)')
     if errors:
@@ -190,7 +192,8 @@ def _finalize(rec):
             f.write('\n[기록 처리 오류]\n' + '\n'.join(errors) + '\n')
     with _lock:
         if _last and _last['dir'] == str(d):
-            _last.update(finalizing=False, error='; '.join(errors) or None, bytes=_size(d))
+            _last.update(finalizing=False, error='; '.join(errors) or None, bytes=_size(d),
+                         videos=sorted(f.name for f in d.glob('video_*.mp4')))
 
 
 def _collect_launch_logs(d):

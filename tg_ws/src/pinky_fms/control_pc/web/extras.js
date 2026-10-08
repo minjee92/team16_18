@@ -300,7 +300,7 @@ function renderRec() {
         ? `<i class="fa-solid fa-circle text-rose-500 animate-pulse"></i> STOP REC ${fmtElapsed(recState.elapsed || 0)}${mb}`
         : `<i class="fa-solid fa-circle-dot"></i> REC LOG`;
     recBtn.title = on ? `기록 중: ${recState.dir}\n누르면 기록을 끝내고 분석용 텍스트(issues.log, summary.txt)를 만듭니다`
-        : '주행 기록 시작: 관제·로봇 토픽, ROS 로그, GUI 조작을 관제PC 의 ~/pinky/logs/rec_<시각>/ 에 저장';
+        : '주행 기록 시작: 관제·로봇 토픽, ROS 로그, GUI 조작, 주행 영상(차선 주행 중)을 관제PC 의 ~/pinky/logs/rec_<시각>/ 에 저장';
 }
 
 async function pollRec() {
@@ -309,7 +309,9 @@ async function pollRec() {
         recState = await api('GET', '/recording/status');
         if (recState.active && recState.recorder_alive === false && prev.recorder_alive !== false) toast('기록 프로세스(ros2 bag)가 종료됐습니다. record.log 를 확인하세요', 'err');
         if (!recState.active && prev.last && prev.last.finalizing && recState.last && !recState.last.finalizing) {
-            toast(`기록 정리 완료: ${recState.last.dir}${recState.last.error ? ' (일부 오류: summary.txt 참고)' : ''}`, recState.last.error ? 'err' : 'ok');
+            const v = recState.last.videos || [];
+            const vid = v.length ? ` · 영상 ${v.join(', ')}` : ' · 영상 없음 (차선 주행 스택이 떠 있을 때만 녹화)';
+            toast(`기록 정리 완료: ${recState.last.dir}${vid}${recState.last.error ? ' (일부 오류: summary.txt 참고)' : ''}`, recState.last.error ? 'err' : 'ok');
         }
     } catch (e) { recState = { active: false, offline: true }; }
     renderRec();
