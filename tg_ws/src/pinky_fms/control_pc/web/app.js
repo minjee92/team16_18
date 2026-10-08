@@ -192,7 +192,7 @@ function renderFleet() {
                     <span id="${r.id}-errbadge" class="hidden ml-1 text-[10px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded"></span>
                 </h3>
                 <div class="flex gap-1">
-                    <button onclick="returnDock('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-emerald-400 px-2 py-1 rounded text-[10px] transition" title="도크(마지막 Init Pose 위치)로 복귀"><i class="fa-solid fa-house mr-1"></i>Dock</button>
+                    <button id="${r.id}-btn-dock" onclick="returnDock('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-emerald-400 px-2 py-1 rounded text-[10px] transition" title="도크(마지막 Init Pose 위치)로 복귀"><i class="fa-solid fa-house mr-1"></i>Dock</button>
                     <button onclick="openLogModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-amber-400 px-2 py-1 rounded text-[10px] transition"><i class="fa-solid fa-terminal mr-1"></i>Log</button>
                     <button onclick="openDiagModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition"><i class="fa-solid fa-network-wired mr-1"></i>Diag</button>
                     <button onclick="openLiveView('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition" title="Live View: 지도 위 로봇 이동 + 로봇 시점 주행 영상 (새 창)"><i class="fa-solid fa-video"></i></button>
@@ -326,10 +326,11 @@ function updateCard(r) {
         btn.className = `${base} ${color} ${enabled ? '' : 'opacity-40 cursor-not-allowed'}`;
     };
     const bi = $('btn-initpose'), bg = $('btn-goal'), go = $('btn-go');
-    style(bi, online && mapReady, (!localized || r.needInitPose) && online ? 'warn' : '', armed('initpose'));
-    style(bg, online && mapReady, localized && !sg ? 'next' : '', armed('goal'));
-    bi.title = !online ? '로봇이 켜져 있어야 합니다' : !mapReady ? '먼저 맵을 업로드/선택하세요' : '맵에서 로봇의 현재 위치를 지정 (AMCL 초기 위치)';
-    bg.title = !online ? '로봇이 켜져 있어야 합니다' : !mapReady ? '먼저 맵을 업로드/선택하세요' : "맵에서 이 로봇의 목표 지점을 지정 (출발은 '주행')";
+    const brReady = bringupReady(r);
+    style(bi, brReady && mapReady, (!localized || r.needInitPose) && online ? 'warn' : '', armed('initpose'));
+    style(bg, brReady && mapReady, localized && !sg ? 'next' : '', armed('goal'));
+    bi.title = !brReady ? '로봇을 ON 하고 bringup 이 준비되어야 합니다' : !mapReady ? '먼저 맵을 업로드/선택하세요' : '맵에서 로봇의 현재 위치를 지정 (AMCL 초기 위치)';
+    bg.title = !brReady ? '로봇을 ON 하고 bringup 이 준비되어야 합니다' : !mapReady ? '먼저 맵을 업로드/선택하세요' : "맵에서 이 로봇의 목표 지점을 지정 (출발은 '주행')";
     go.className = `${base} ${canGo ? 'bg-cyan-700 hover:bg-cyan-600 text-white ring-2 ring-cyan-300' : 'bg-slate-700 text-slate-300 opacity-40 cursor-not-allowed'}`;
     go.disabled = !canGo;
     go.classList.toggle('hidden', st === 'BUSY');
@@ -340,6 +341,8 @@ function updateCard(r) {
     const rc = readyChecks(r);
     if (rc.summary !== 'READY' && st === 'IDLE') go.title += `\n(준비 안 됨: ${rc.reason})`;
     $('btn-cancel').classList.toggle('hidden', st !== 'BUSY' && !laneActive(r));
+    const dk = $('btn-dock'), dkOn = bringupReady(r);
+    if (dk) { dk.disabled = !dkOn; dk.classList.toggle('opacity-40', !dkOn); dk.classList.toggle('cursor-not-allowed', !dkOn); }
 }
 
 // ---- 기술 스택 준비 상태 (선택한 미션 기준) ----
@@ -384,7 +387,38 @@ function renderReady(r) {
         + items.map(([n, st, tip]) => `<span class="${color[st]}" title="${tip}">${mark[st]} ${n}</span>`).join('<span class="text-slate-600">·</span>');
 }
 
+// bringup 이 준비된 로봇: 조정 층이 상태를 올려 주고(IDLE/BUSY), 준비 상태에서도 bringup 이 확인된 경우
+function bringupReady(r) {
+    const st = effectiveState(r);
+    if (st !== 'IDLE' && st !== 'BUSY') return false;
+    const rd = r.ready && Date.now() - r.ready.t < 3000 ? r.ready : null;
+    return !rd || !!rd.bringup;
+}
+
+// 준비 전에는 쓸 수 없는 전역 조작(미션 선택·자동 배정·전체 도크)을 막고, 준비되면 연다. E-STOP 은 항상 켜 둔다
+function refreshGates() {
+    const any = Object.values(robots).some(bringupReady);
+    const why = '로봇을 ON 하고 bringup 이 준비되면(카드 상태 IDLE) 쓸 수 있습니다';
+    const gate = (el, on, title) => {
+        if (!el) return;
+        el.disabled = !on;
+        el.classList.toggle('opacity-40', !on);
+        el.classList.toggle('cursor-not-allowed', !on);
+        if (!on) { if (el.dataset.t === undefined) el.dataset.t = el.title || ''; el.title = title; }
+        else if (el.dataset.t !== undefined) { el.title = el.dataset.t; delete el.dataset.t; }
+    };
+    gate(document.getElementById('mission-type'), any, why);
+    gate(document.getElementById('btn-auto-tool'), any && !!mapState.meta, any ? '먼저 맵을 선택하세요' : why);
+    gate(document.getElementById('btn-return'), any, why);
+    const desc = document.getElementById('mission-desc');
+    if (desc) {
+        desc.textContent = any ? MISSION_DESC[missionType] : `⏳ ${why}. 미션은 그 뒤에 고릅니다.`;
+        desc.classList.toggle('text-amber-400', !any);
+    }
+}
+
 function updateKpis() {
+    refreshGates();
     const list = Object.values(robots);
     const states = list.map(effectiveState);
     document.getElementById('kpi-total').textContent = list.length;
@@ -860,6 +894,7 @@ function renderMissionPanel() {
     if (!sel) return;
     sel.value = missionType;
     document.getElementById('mission-desc').textContent = MISSION_DESC[missionType];
+    refreshGates();
     document.getElementById('mission-traffic').classList.toggle('hidden', missionType !== 'fleet');
     document.getElementById('start-all-row').classList.toggle('hidden', missionType !== 'fleet');
     const mode = trafficState ? trafficState.mode : null;

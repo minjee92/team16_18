@@ -59,7 +59,7 @@
    - `mission4_3_lanes_1cm`: 차선이 그려진 지도 (기본)
    - `mission4_3_nolanes_1cm`: 같은 공간에서 차선만 지운 지도
    - 다른 지도는 **맵 업로드**(yaml + pgm/png 를 함께 선택). 고른 지도는 로봇에도 자동으로 보내진다.
-3. **미션 고르기** — Mission 선택
+3. **미션 고르기** — Mission 선택 (로봇이 하나라도 bringup 준비(IDLE)되기 전에는 미션 선택·자동 배정 주행·RETURN DOCK·카드의 Init Pose·Set Goal·Dock 이 비활성. E-STOP·REC LOG 는 항상 사용 가능)
    - 고르는 순간 켜진 로봇마다 그 미션에 맞는 주행 스택이 켜진다(Nav2 또는 차선 주행).
    - 스택이 뜨면 카드에 `Init Pose` 가 필요하다고 표시된다.
 4. **초기 위치 — Init Pose** (로봇마다)
