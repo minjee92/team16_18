@@ -11,6 +11,20 @@ python3 -m venv --system-site-packages ~/dev_ws/yolo_sim_venv
 ~/dev_ws/yolo_sim_venv/bin/pip install -r <tg_ws>/src/pinky_fms/simulation/pinky_fms_sim/requirements-lane.txt
 ```
 
+## 한 번에 띄우기 (발표·화면 확인용)
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/pinky/install/setup.bash && source ~/dev_ws/team16_18/tg_ws/install/setup.bash
+FMS_WS=~/dev_ws/team16_18/tg_ws ros2 run pinky_fms_sim run_lane_sim.sh                          # R1 에 두고 목표 대기
+GOAL=0.45,0.95,home FMS_WS=~/dev_ws/team16_18/tg_ws ros2 run pinky_fms_sim run_lane_sim.sh      # 준비되면 바로 출발
+```
+월드(화면) → 로봇(R1) → 위치 추정·미션 노드 → 관제(lane_traffic, lane_route) → 초기 위치까지 차례로 띄우고 확인한다.
+끄기는 Ctrl+C (모두 끈다). 설정: `START=R2`, `GUI=false`, `DOMAIN=93`, `MODEL=`, `PYTHON=`. 로그 `/tmp/lane_sim_*.log`.
+다음 목표는 다른 터미널에서 (같은 source, `export ROS_DOMAIN_ID=93`) 아래 6번 명령으로, id 를 바꿔 보낸다.
+예: 꼬리 윗길 (0.45, 0.95) → 고리 오른변 (2.0, 0.80) (J 직진) → 꼬리 왼쪽 세로 (0.07, 0.57) (고리를 돌아 J 좌회전).
+
+## 터미널 따로 띄우기
+
 모든 터미널에서 먼저:
 ```bash
 source /opt/ros/jazzy/setup.bash && source ~/pinky/install/setup.bash && source ~/dev_ws/team16_18/tg_ws/install/setup.bash
