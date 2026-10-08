@@ -237,6 +237,7 @@ weights/
 # tg_ws 디버깅 출력 폴더: 폴더(.gitkeep)만 추적하고 내용물(mp4, csv 등)은 제외
 /tg_ws/outputs/*
 !/tg_ws/outputs/.gitkeep
+!/tg_ws/outputs/COLCON_IGNORE
 # 좌표 기록 도구(record_course_points)가 덮어쓰기 전에 만드는 백업
 /tg_ws/src/pinky_fms_lane/control_pc/pinky_fms_lane/course/*.bak.*
 
