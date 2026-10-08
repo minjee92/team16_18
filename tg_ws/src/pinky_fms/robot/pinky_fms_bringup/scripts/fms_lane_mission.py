@@ -38,6 +38,8 @@ pinky_autonomous 의 AutonomousDriveNode 를 수정하지 않고 상속해서 �
      같은 id 는 무시(관제가 1초마다 keepalive 로 재전송). HOLD·YIELDED 에서 10초 동안 명령이 없으면 resume 으로 간주.
      비켜서기·복귀 중에는 차선 추종을 멈추고 지도 위치로 직접 움직인다. 라이다 원시값 앞 ±0.08 m 에 앞면 0.06 m 보다
      가까운 점이 있으면 정지, 3초 넘게 막히거나 20초가 지나면 YIELD_FAILED 로 그 자리에 정지.
+  주행 영상(기록용): camera/rec (CompressedImage, JPEG 320×240, 기본 5 Hz). 구독자가 있을 때만 만든다 (관제 REC LOG).
+     원본의 camera/compressed 는 640×480 을 매 프레임 인코딩해 주행 루프를 느리게 하므로 기록에는 쓰지 않는다.
   상태는 lane_status (std_msgs/String JSON) 로 5 Hz 발행 → 로봇 LCD(fms_lcd_status)와 관제가 표시한다.
   LCD 는 이 노드가 직접 쓰지 않는다 (launch 에서 enable_lcd:=false).
 """
@@ -51,7 +53,7 @@ from rclpy.signals import SignalHandlerOptions
 from geometry_msgs.msg import PoseArray, Twist
 from nav_msgs.msg import OccupancyGrid
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import CompressedImage, LaserScan
 from std_msgs.msg import String
 
 from pinky_autonomous.autonomous_drive_node import (
@@ -129,6 +131,13 @@ class FmsLaneMission(AutonomousDriveNode):
         self.create_subscription(OccupancyGrid, self.map_topic, self._on_wall_map, qos_map)
         self.create_subscription(LaserScan, 'scan', self._on_scan, qos_profile_sensor_data)
         self.create_timer(0.2, self._publish_status)          # 관제 lane_traffic 이 마주침을 판단하므로 5 Hz
+        # 기록용 주행 영상: 작게·느리게 (구독자가 있을 때만)
+        self.declare_parameter('rec_fps', 5.0)
+        self.declare_parameter('rec_width', 320)
+        self.rec_w = int(self.get_parameter('rec_width').value)
+        self.rec_pub = self.create_publisher(CompressedImage, 'camera/rec', 2)
+        self.rec_result = None
+        self.create_timer(1.0 / max(0.5, float(self.get_parameter('rec_fps').value)), self._publish_rec)
         if self.goal is None:
             self.get_logger().info('목적지 대기 중 (GUI: Init Pose → Set Goal → Go)')
         else:
@@ -793,6 +802,36 @@ class FmsLaneMission(AutonomousDriveNode):
             if abs(err) > math.radians(8):
                 return 0.0, math.copysign(min(0.8, max(0.3, 1.5 * abs(err))), err), False
         return 0.0, 0.0, True
+
+    # ---------- 기록용 주행 영상 ----------
+    def _detect(self):
+        out = super()._detect()
+        self.rec_result = out[0]                 # 마지막 추론 결과 (원본 프레임 + 검출 표시)
+        return out
+
+    def _publish_rec(self):
+        if self.rec_pub.get_subscription_count() == 0 or self.rec_result is None:
+            return
+        try:
+            import cv2
+            img = self.rec_result.plot()         # 차선·횡단보도 검출을 그린 프레임 (BGR)
+            h, w = img.shape[:2]
+            img = cv2.resize(img, (self.rec_w, int(h * self.rec_w / w)))
+            pose = self._current_pose() if self.tf_buffer is not None else None
+            txt = f'{self.robot_name} {self.state} {self.traffic or ""} {self.leg}'
+            cv2.putText(img, txt, (4, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+            if pose is not None:
+                cv2.putText(img, f'({pose[0]:.2f},{pose[1]:.2f})', (4, img.shape[0] - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+            ok, buf = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            if ok:
+                m = CompressedImage()
+                m.header.stamp = self.get_clock().now().to_msg()
+                m.header.frame_id = self.robot_name
+                m.format = 'jpeg'
+                m.data = buf.tobytes()
+                self.rec_pub.publish(m)
+        except Exception as e:
+            self.get_logger().warn(f'기록 영상 만들기 실패: {e}', throttle_duration_sec=10.0)
 
     # ---------- LED 규칙 (사용자 지정 10/9): 주행 초록 깜빡 / 감속 주황 깜빡 / 정지·일시정지 빨강 고정 / 충돌 빨강 빠른 깜빡 / 미션 종료 끔 ----------
     LAMP_COLLISION = (1.0, 0.0, 0.0, 2, 150)
