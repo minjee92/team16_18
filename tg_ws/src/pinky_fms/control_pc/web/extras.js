@@ -29,43 +29,84 @@ window.publishInitialPose = function (robotId, x, y, yaw) {
     return _publishInitialPose.apply(this, arguments);
 };
 
-// ---- 차선 띠 판정: 차선 지도(빈 칸 = 차선)를 GUI 에서 고른 지도와 따로 불러 둔다 ----
-const LANE_OFF_TOL = 0.06;      // 차선 띠에서 이보다 멀면 '차선 밖' (실측: 차선 위 0~3 cm, 2026-10-08 23:13 amr_02 차선 밖 15 cm)
-const laneMap = { meta: null, w: 0, h: 0, free: null, loading: false };
+// ---- Lane 로봇 도크: 차선 추종 대신 잠시 Nav2 로 바꿔 복귀하고, 끝나면 차선 스택으로 되돌린다 ----
+// (차선 'home' 편도 복귀는 갈림길 교착에서 돌아오지 못함: 2026-10-08 23:44 실물)
+const DOCK_NAV_READY_MS = 90000;      // Nav2 가 켜지고 위치가 잡힐 때까지 기다리는 최대 시간
+const DOCK_LANE_STOP_MS = 8000;       // 차선 미션 cancel 뒤 멈출 때까지 기다리는 최대 시간
+let dockMapName = null;               // Nav2 도크용 지도: 차선 지도는 차선 밖이 미확인이라 Nav2 가 경로를 못 낸다 → *_nolanes*
 
-async function loadLaneMap() {
-    if (laneMap.meta || laneMap.loading) return;
-    laneMap.loading = true;
-    try {
-        const list = await api('GET', '/maps');
-        const m = list.find(x => /_lanes(_|$)/.test(x.name));
-        if (!m || !m.image.toLowerCase().endsWith('.pgm')) return;
-        const res = await fetch(`${BACKEND_URL}/maps/${m.name}/image`);
-        if (!res.ok) return;
-        const { w, h, data } = parsePgm(await res.arrayBuffer());
-        const free = new Uint8Array(w * h);
-        for (let k = 0; k < w * h; k++) {
-            const p = m.negate ? data[k] / 255 : (255 - data[k]) / 255;
-            free[k] = p < m.free_thresh ? 1 : 0;
-        }
-        Object.assign(laneMap, { meta: m, w, h, free });
-    } catch (e) { /* 백엔드가 늦게 뜨면 다음에 다시 */ }
-    finally { laneMap.loading = false; }
+async function nolanesMap() {
+    if (dockMapName) return dockMapName;
+    try { const m = (await api('GET', '/maps')).find(x => /_nolanes(_|$)/.test(x.name)); if (m) dockMapName = m.name; } catch (e) { /* 아래에서 현재 지도 */ }
+    return dockMapName;
 }
 
-// 로봇 위치에서 가장 가까운 차선 칸까지 거리(m). 차선 지도·위치를 모르면 null (판정하지 않음)
-function laneOffset(r) {
-    const p = r.lane && Array.isArray(r.lane.pose) && Date.now() - r.lane.t < 5000 ? r.lane.pose : null;   // 오래된 위치로는 판정하지 않는다
-    const m = laneMap.meta;
-    if (!p || !m) return null;
-    const res = m.resolution, c0 = Math.floor((p[0] - m.origin[0]) / res), r0 = laneMap.h - 1 - Math.floor((p[1] - m.origin[1]) / res);
-    const R = Math.ceil(0.3 / res);
-    let best = Infinity;
-    for (let dr = -R; dr <= R; dr++) for (let dc = -R; dc <= R; dc++) {
-        const rr = r0 + dr, cc = c0 + dc;
-        if (rr >= 0 && rr < laneMap.h && cc >= 0 && cc < laneMap.w && laneMap.free[rr * laneMap.w + cc]) best = Math.min(best, Math.hypot(dr, dc) * res);
+function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
+async function waitFor(cond, ms) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { if (cond()) return true; await sleep(300); }
+    return cond();
+}
+
+// 지금 로봇이 믿는 위치: 차선 노드가 보낸 pose(5 s 안) → 조정 층의 AMCL 위치
+function currentPose(r) {
+    if (r.lane && Array.isArray(r.lane.pose) && Date.now() - r.lane.t < 5000) { const [x, y, yaw] = r.lane.pose; return { x, y, yaw }; }
+    if (r.status && r.status.localized && Date.now() - (r.statusAt || 0) < 5000) return { x: r.status.x, y: r.status.y, yaw: r.status.yaw };
+    return null;
+}
+
+// Nav2 도크가 끝나면(도착·실패·취소·E-STOP) 미션이 아직 Lane 이면 차선 스택으로 되돌리고 위치를 자동으로 넘긴다
+async function restoreLane(r, why) {
+    const p = currentPose(r);
+    r.stackOverride = r.stackMapOverride = null;
+    r.docking = null;
+    if (missionType !== 'lane' || !r.proc) { updateCard(r); return; }
+    const started = await prepareStack(r, true);           // nav → lane (백엔드가 nav 를 끄고 lane 을 띄운다)
+    if (started && p) {
+        _publishInitialPose(r.id, p.x, p.y, p.yaw);        // 원래 함수: 도크(home)를 덮어쓰지 않는다. Nav2 워밍업 대기는 이 함수가 한다
+        toast(`${displayName(r.id)}: ${why} → 차선 스택으로 되돌리고 현재 위치(${p.x.toFixed(2)}, ${p.y.toFixed(2)})를 Init Pose 로 보냅니다`, 'info');
+    } else if (started) {
+        toast(`${displayName(r.id)}: ${why} → 차선 스택으로 되돌렸습니다. 위치를 몰라 Init Pose 를 직접 지정하세요`, 'err');
     }
-    return best;
+}
+
+async function dockLaneViaNav(r, h, t0, fail) {
+    const n = displayName(r.id);
+    const p = currentPose(r);
+    if (!p) return fail('위치를 모릅니다 – 먼저 Init Pose 를 지정하세요');
+    const aborted = () => estopAt >= t0 || !r.proc;
+    r.docking = { t0 };
+    sendLaneCmd(r, 'cancel');                              // 차선 주행부터 멈춘다
+    toast(`${n} RETURN DOCK: 차선 주행을 멈추고 Nav2 로 도크(${h.x.toFixed(2)}, ${h.y.toFixed(2)})까지 복귀합니다 — 도크 중 다른 로봇과의 간섭 주의 (차선 주행 로봇과는 서로 피하지 않음)`, 'info');
+    if (!await waitFor(() => !laneActive(r) || aborted(), DOCK_LANE_STOP_MS) || aborted()) {
+        r.docking = null;
+        return fail(aborted() ? 'E-STOP 으로 복귀를 중단했습니다' : '차선 주행이 멈추지 않아 복귀하지 못했습니다');
+    }
+    r.stackOverride = 'nav';
+    r.stackMapOverride = (await nolanesMap()) || mapName();
+    if (!await prepareStack(r, true)) {                    // lane → nav (실패 이유는 prepareStack 이 알린다)
+        await restoreLane(r, 'Nav2 시작 실패');
+        return false;
+    }
+    _publishInitialPose(r.id, p.x, p.y, p.yaw);            // Nav2 는 60 s 안에 초기 위치가 없으면 활성화를 포기한다 → 자동으로 보낸다
+    const ready = () => r.ready && Date.now() - r.ready.t < 3000 && r.ready.nav === 'active' && canStart(r);
+    if (!await waitFor(() => ready() || aborted(), DOCK_NAV_READY_MS) || aborted()) {
+        await restoreLane(r, aborted() ? 'E-STOP' : 'Nav2 준비 시간 초과');
+        return fail(aborted() ? 'E-STOP 으로 복귀를 중단했습니다' : `Nav2 가 ${DOCK_NAV_READY_MS / 1000}초 안에 준비되지 않아 복귀하지 못했습니다`);
+    }
+    const mid = launchNav(r.id, h.x, h.y, h.yaw);
+    if (!mid) { await restoreLane(r, '복귀 요청 실패'); return false; }
+    r.docking = { t0, mid };
+    updateCard(r); refreshStartAll();
+    // 이 도크 미션이 끝나면 차선 스택으로 되돌린다
+    (async () => {
+        const end = () => r.task && r.task.mission_id === mid && ['SUCCEEDED', 'FAILED', 'CANCELED'].includes(r.task.state);
+        await waitFor(() => end() || !r.proc || (r.docking && r.docking.mid !== mid), 30 * 60000);
+        if (!r.docking || r.docking.mid !== mid) return;
+        const st = r.task && r.task.mission_id === mid ? r.task.state : '종료';
+        await restoreLane(r, st === 'SUCCEEDED' ? '도크 도착' : `도크 ${st}`);
+    })();
+    return true;
 }
 
 function waitIdle(r, ms) {
@@ -86,19 +127,10 @@ async function dockOne(r, quiet) {
     const fail = (msg) => { if (!quiet) toast(`${n}: ${msg}`, 'err'); return false; };
     if (!h) return fail('도크(초기 위치)가 없습니다. 먼저 Init Pose 를 지정하세요');
     if (!r.proc || effectiveState(r) === 'OFFLINE') return fail('로봇이 꺼져 있습니다');
+    if (r.docking) return fail('이미 도크로 복귀 중입니다 (멈추려면 Cancel)');
     r.staged = null;
 
-    if (r.stack === 'lane') {               // 차선 스택: 차선을 따라 편도로 도크까지 (fms_lane_mission 'home')
-        const off = laneOffset(r);
-        if (off !== null && off > LANE_OFF_TOL) {
-            return fail(`차선 밖(차선에서 ${(off * 100).toFixed(0)} cm)에 있어 차선 복귀가 불가합니다 — 로봇을 차선 위로 옮긴 뒤 Init Pose 를 지정하세요`);
-        }
-        if (!sendLaneCmd(r, 'home', { x: h.x, y: h.y })) return false;
-        r.goalPose = { x: h.x, y: h.y, yaw: h.yaw };
-        toast(`${n} RETURN DOCK: 차선을 따라 (${h.x.toFixed(2)}, ${h.y.toFixed(2)}) 로 복귀`, 'info');
-        updateCard(r); refreshStartAll();
-        return true;
-    }
+    if (r.stack === 'lane') return dockLaneViaNav(r, h, t0, fail);    // 차선 로봇: 잠시 Nav2 로 바꿔 복귀
 
     if (navNeedsStart(r)) return fail('Nav2 가 꺼져 있습니다. Mission 을 Goal/Fleet 으로 고르면 켜집니다');
     if (r.needInitPose || !(r.status && r.status.localized)) return fail('위치(AMCL)를 모릅니다. 먼저 Init Pose 를 지정하세요');
@@ -118,7 +150,8 @@ window.returnDock = function (id) {
     const r = robots[id];
     if (!r) return;
     const h = getHome(r);
-    if (h && !confirm(`${displayName(id)} 를 도크(초기 위치 ${h.x.toFixed(2)}, ${h.y.toFixed(2)})로 복귀시킬까요?\n진행 중인 미션은 취소됩니다.`)) return;
+    const laneNote = r.stack === 'lane' ? '\n차선 주행 중이면 Nav2 로 잠시 바꿔 복귀한 뒤 차선 스택으로 되돌립니다. 도크 중 다른 로봇과의 간섭에 주의하세요.' : '';
+    if (h && !confirm(`${displayName(id)} 를 도크(초기 위치 ${h.x.toFixed(2)}, ${h.y.toFixed(2)})로 복귀시킬까요?\n진행 중인 미션은 취소됩니다.${laneNote}`)) return;
     dockOne(r, false);
 };
 
@@ -129,7 +162,8 @@ async function returnAllDock() {
     if (!withHome.length) { toast('도크(초기 위치)가 지정된 로봇이 없습니다. 먼저 Init Pose 를 지정하세요', 'err'); return; }
     const lines = withHome.map(r => { const h = getHome(r); return `  ${displayName(r.id)} → (${h.x.toFixed(2)}, ${h.y.toFixed(2)})`; }).join('\n');
     const skip = noHome.length ? `\n\n제외(Init Pose 없음): ${noHome.map(r => displayName(r.id)).join(', ')}` : '';
-    if (!confirm(`${withHome.length}대를 도크(초기 위치)로 복귀시킬까요? 진행 중인 미션은 취소됩니다.\n\n${lines}${skip}`)) return;
+    const laneNote = withHome.some(r => r.stack === 'lane') ? '\n차선 로봇은 Nav2 로 잠시 바꿔 복귀합니다. 도크 중 서로 간섭할 수 있으니 주의하세요.' : '';
+    if (!confirm(`${withHome.length}대를 도크(초기 위치)로 복귀시킬까요? 진행 중인 미션은 취소됩니다.${laneNote}\n\n${lines}${skip}`)) return;
     const res = await Promise.all(withHome.map(r => dockOne(r, false)));
     const n = res.filter(Boolean).length;
     toast(`RETURN DOCK: ${n}/${withHome.length}대 복귀 출발${n < withHome.length ? ' (실패한 로봇은 알림 확인)' : ''}`, n ? 'ok' : 'err');
@@ -321,5 +355,4 @@ window.updateCard = function (r) {
 };
 
 pollRec();
-loadLaneMap();
-setInterval(() => { pollRec(); loadLaneMap(); if (rosOnline) { ensureEstopAck(); ensureLaneState(); } }, 2000);
+setInterval(() => { pollRec(); if (rosOnline) { ensureEstopAck(); ensureLaneState(); } }, 2000);
