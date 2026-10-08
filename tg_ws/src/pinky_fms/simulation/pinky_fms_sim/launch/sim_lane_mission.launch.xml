@@ -1,0 +1,44 @@
+<?xml version='1.0' ?>
+<!--
+  Gazebo 로봇 한 대에 실물 차선 미션 스택을 붙인다 (sim_world, sim_robot nav:=false 가 먼저 떠 있어야 함).
+    ros2 launch pinky_fms_sim sim_lane_mission.launch.xml namespace:=amr_01 model_path:=<best.pt> python:=<venv>/bin/python
+  - 위치: AMCL 만 (pinky_fms_lane_robot robot_localization, sim 시간, TF 접두어 amr_01/). 지도는 기본 clean (벽이 차선 지도와 같음)
+  - 주행: 실물 fms_lane_mission 을 sim_fms_lane_mission.py 래퍼로 (가짜 Picamera2 = Gazebo 카메라). 실물 코드 수정 없음
+  - 목표: 관제 lane_route 에 /fleet/lane_goal 을 보내면 경로가 붙은 lane_cmd 가 온다 (README·pinky_fms_sim/LANE_MISSION.md)
+  python 은 ultralytics 가 깔린 파이썬 (예: system-site-packages 를 켠 가상환경에 requirements-lane.txt 설치).
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <arg name="map" default="$(find-pkg-share pinky_fms_sim)/maps/mission4_3_clean_1cm.yaml"/>
+    <arg name="model_path"/>
+    <arg name="python" default="python3"/>
+    <arg name="drive_speed" default="0.10"/>
+    <arg name="fms_link_timeout" default="2.0"/>   <!-- 관제 lane_traffic 의 살아있음 신호가 없으면 정지. 관제 없이 시험하려면 0 -->
+
+    <include file="$(find-pkg-share pinky_fms_lane_robot)/launch/robot_localization.launch.xml">
+        <arg name="namespace" value="$(var namespace)"/>
+        <arg name="map" value="$(var map)"/>
+        <arg name="use_sim_time" value="True"/>
+        <arg name="frame_prefix" value="$(var namespace)/"/>
+    </include>
+
+    <node pkg="pinky_fms_sim" exec="sim_fms_lane_mission.py" name="fms_lane_mission" namespace="$(var namespace)"
+          output="screen" launch-prefix="$(var python)">
+        <env name="SIM_CAMERA_NS" value="/$(var namespace)"/>
+        <remap from="/tf" to="tf"/>
+        <remap from="/tf_static" to="tf_static"/>
+        <param name="use_sim_time" value="True"/>
+        <param name="robot_name" value="$(var namespace)"/>
+        <param name="model_path" value="$(var model_path)"/>
+        <param name="drive_speed" value="$(var drive_speed)"/>
+        <param name="enable_lcd" value="false"/>
+        <param name="enable_return_home" value="true"/>
+        <param name="map_topic" value="map"/>
+        <param name="base_frame" value="$(var namespace)/base_footprint"/>
+        <param name="camera_warmup" value="0.0"/>
+        <param name="fms_link_timeout" value="$(var fms_link_timeout)"/>
+        <param name="lane_classes" value="['left_lane', 'right_lane']"/>
+        <param name="crosswalk_classes" value="['crosswalk']"/>
+        <param name="junction_classes" value="['cross_lane']"/>
+    </node>
+</launch>
