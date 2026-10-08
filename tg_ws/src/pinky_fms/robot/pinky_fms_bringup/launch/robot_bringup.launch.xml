@@ -9,7 +9,8 @@
 -->
 <launch>
     <arg name="namespace" default="amr_01"/>
-    <arg name="lcd" default="true"/>   <!-- 관제(fleet_traffic)의 주행 상태를 LCD 에 표시. emotion 서버 등 LCD 를 쓰는 다른 노드와 같이 쓰지 않는다 -->
+    <arg name="lcd" default="true"/>
+    <arg name="lamp" default="true"/>  <!-- LED 노드: 모든 미션에서 상태를 LED 로 표시 (Nav2 미션은 fms_lcd_status, 차선 미션은 차선 노드가 색을 정함) -->   <!-- 관제(fleet_traffic)의 주행 상태를 LCD 에 표시. emotion 서버 등 LCD 를 쓰는 다른 노드와 같이 쓰지 않는다 -->
 
     <group>
         <push-ros-namespace namespace="$(var namespace)"/>
@@ -21,5 +22,10 @@
         <include file="$(find-pkg-share pinky_bringup)/launch/bringup_robot.launch.xml"/>
     </group>
 
+    <!-- LED 는 장치를 하나의 노드만 열 수 있다: 예전에는 차선 스택이 띄웠으나 이제 여기서 한 번만 띄운다 -->
+    <node pkg="pinky_lamp_control" exec="main_node" name="pinky_lamp_control" namespace="$(var namespace)" output="screen" if="$(var lamp)">
+        <remap from="/tf" to="tf"/>
+        <remap from="/tf_static" to="tf_static"/>
+    </node>
     <node pkg="pinky_fms_bringup" exec="fms_lcd_status.py" name="fms_lcd_status" namespace="$(var namespace)" output="screen" if="$(var lcd)"/>
 </launch>

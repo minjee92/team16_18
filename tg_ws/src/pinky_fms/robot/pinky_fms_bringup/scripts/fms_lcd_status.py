@@ -127,11 +127,57 @@ def main():
             self.create_subscription(String, 'fms_status', self.on_status,
                                      QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
             self.create_subscription(String, 'lane_status', self.on_lane_status, 10)
+            # LED: 모든 미션에서 관제 주행 상태를 LED 로도 보여 준다. Lane Following 주행 중에는 차선 노드가 직접 LED 를 다루므로 건드리지 않는다
+            self.fms_state, self.lane_state = 'FMS STANDBY', None
+            self.lamp_cli, self.lamp_last, self.lamp_t = None, None, 0.0
+            try:
+                from pinky_interfaces.srv import SetLamp
+                self.SetLamp = SetLamp
+                self.lamp_cli = self.create_client(SetLamp, 'set_lamp')
+            except Exception as e:
+                self.get_logger().warn(f'LED 서비스 형식을 불러올 수 없어 LED 표시를 끕니다: {e}')
+            self.create_timer(0.5, self.update_lamp)
             self.show('FMS STANDBY', '')
 
         def on_lane_status(self, msg):
             self.lane_t = time.monotonic()
+            try:
+                self.lane_state = json.loads(msg.data).get('state')
+            except ValueError:
+                pass
             self.on_status(msg, lane=True)
+
+        # (r, g, b, mode, ms): mode 1 = 켜짐, 2 = 깜빡임, 0 = 끔. 사용자 지정 규칙(10/9):
+        # 주행 초록 깜빡 / 감속 주황 깜빡 / 정지·일시정지 빨강 고정 / 충돌 빨강 빠른 깜빡 / 미션 종료 끔
+        GREEN_BLINK, ORANGE_BLINK = (0.0, 1.0, 0.0, 2, 500), (1.0, 0.35, 0.0, 2, 300)
+        RED_SOLID, RED_FAST = (1.0, 0.0, 0.0, 1, 0), (1.0, 0.0, 0.0, 2, 150)
+        LAMP = {'DRIVING': GREEN_BLINK, 'RESUME DRIVING': GREEN_BLINK, 'OWN DRIVING PRIORITY': GREEN_BLINK, 'RETURNING': GREEN_BLINK,
+                'SLOW': ORANGE_BLINK,
+                'WAITING': RED_SOLID, 'STOPPED': RED_SOLID, 'FAILED': RED_SOLID,
+                'COLLISION': RED_FAST}               # ARRIVED·IDLE·STANDBY 등 미션 종료는 끔
+
+        def update_lamp(self):
+            if self.lamp_cli is None:
+                return
+            now = time.monotonic()
+            if now - self.lane_t < 3.0 and self.lane_state not in ('IDLE', None):
+                self.lamp_last = None           # 차선 미션 주행 중: 차선 노드가 LED 를 다룬다
+                return
+            state = self.lane_state if now - self.lane_t < 3.0 else self.fms_state
+            lamp = self.LAMP.get(state, (0.0, 0.0, 0.0, 0, 0))      # IDLE·STANDBY 등은 끔
+            if not self.lamp_cli.service_is_ready():
+                self.lamp_last = None
+                return
+            if lamp == self.lamp_last and now - self.lamp_t < 2.0:   # 같은 설정은 2초마다만 다시 보낸다 (LED 노드 재시작 대비)
+                return
+            r, g, b, mode, ms = lamp
+            req = self.SetLamp.Request()
+            req.color.r, req.color.g, req.color.b, req.color.a = float(r), float(g), float(b), 1.0
+            req.mode, req.time = mode, ms
+            self.lamp_cli.call_async(req)
+            if lamp != self.lamp_last:
+                self.get_logger().info(f'LED: {state} → {lamp}')
+            self.lamp_last, self.lamp_t = lamp, now
 
         def on_status(self, msg, lane=False):
             if not lane and time.monotonic() - self.lane_t < 3.0:
@@ -141,6 +187,8 @@ def main():
             except ValueError:
                 return
             dist = m.get('dist')
+            if not lane:
+                self.fms_state = str(m.get('state', ''))
             self.show(str(m.get('state', '')), str(m.get('detail', '')), float(dist) if isinstance(dist, (int, float)) else None)
 
         def show(self, state, detail, dist=None):

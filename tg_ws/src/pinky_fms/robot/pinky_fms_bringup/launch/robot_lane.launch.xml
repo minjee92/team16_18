@@ -36,7 +36,7 @@
         <set_remap from="/tf" to="tf"/>
         <set_remap from="/tf_static" to="tf_static"/>
 
-        <node pkg="pinky_lamp_control" exec="main_node" name="pinky_lamp_control" output="screen"/>
+        <!-- LED 노드(pinky_lamp_control)는 robot_bringup 이 띄운다 (스택을 바꿔도 LED 가 유지되고, 장치를 두 노드가 열지 않게) -->
         <node pkg="pinky_sensor_adc" exec="main_node" name="pinky_sensor_adc" output="screen" if="$(var run_adc_sensor)">
             <remap from="batt_state" to="adc/batt_state"/>
         </node>
