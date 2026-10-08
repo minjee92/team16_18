@@ -6,11 +6,24 @@ URL=http://localhost:8080
 
 up() { curl -s -o /dev/null -m 1 "$1"; }
 
-if up $URL && up http://localhost:8000/config; then
+port_up() { ss -ltn 2>/dev/null | grep -q ":$1 "; }
+if port_up 8000 && port_up 8080 && port_up 9090 && pgrep -f "[f]leet_traffic --ros-args" >/dev/null; then
   echo "[Pinky FMS] 관제 스택이 이미 실행 중입니다. GUI 만 엽니다."
   xdg-open $URL >/dev/null 2>&1
   sleep 2
   exit 0
+fi
+# 일부만 남아 있으면(이전 실행을 닫을 때 덜 꺼짐) 남은 FMS 구성 요소를 정리하고 새로 띄운다
+if port_up 8000 || port_up 8080 || port_up 9090 || pgrep -f "[t]raffic_core.launch.xml" >/dev/null; then
+  echo "[Pinky FMS] 이전 실행이 일부 남아 있어 정리합니다 (백엔드·웹·rosbridge·traffic_core)"
+  for pat in "[u]vicorn app:app" "[h]ttp.server 8080" "[r]osbridge_websocket" "[t]raffic_core.launch.xml" "[f]leet_traffic --ros-args" "[f]leet_mission --ros-args" "[l]ane_traffic --ros-args"; do
+    pkill -TERM -f "$pat" 2>/dev/null
+  done
+  sleep 2
+  for pat in "[u]vicorn app:app" "[h]ttp.server 8080" "[r]osbridge_websocket" "[t]raffic_core.launch.xml" "[f]leet_traffic --ros-args" "[f]leet_mission --ros-args" "[l]ane_traffic --ros-args"; do
+    pkill -KILL -f "$pat" 2>/dev/null
+  done
+  sleep 1
 fi
 
 echo "[Pinky FMS] 관제 스택을 시작합니다 (rosbridge · traffic_core · 백엔드 · 웹)"
