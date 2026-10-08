@@ -25,7 +25,7 @@ cleanup() {
   sleep 2
   for p in "${PIDS[@]}"; do kill -TERM -- -"$p" 2>/dev/null || true; done
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP   # HUP: 바탕화면 아이콘으로 띄운 터미널 창을 닫았을 때도 정리
 
 setsid ros2 launch rosbridge_server rosbridge_websocket_launch.xml > /tmp/fms_real_rosbridge.log 2>&1 & PIDS+=($!)
 setsid ros2 launch pinky_fms_traffic traffic_core.launch.xml robots_file:=$CFG map_yaml:=$MAP lanes_yaml:=$LANES floor_yaml:=$FLOOR > /tmp/fms_real_core.log 2>&1 & PIDS+=($!)
