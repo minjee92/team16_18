@@ -195,7 +195,7 @@ function renderFleet() {
                     <button onclick="returnDock('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-emerald-400 px-2 py-1 rounded text-[10px] transition" title="도크(마지막 Init Pose 위치)로 복귀"><i class="fa-solid fa-house mr-1"></i>Dock</button>
                     <button onclick="openLogModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-amber-400 px-2 py-1 rounded text-[10px] transition"><i class="fa-solid fa-terminal mr-1"></i>Log</button>
                     <button onclick="openDiagModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition"><i class="fa-solid fa-network-wired mr-1"></i>Diag</button>
-                    <button onclick="openCamModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition" title="실시간 주행 영상 (Lane Following 중)"><i class="fa-solid fa-video"></i></button>
+                    <button onclick="openLiveView('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition" title="Live View: 지도 위 로봇 이동 + 로봇 시점 주행 영상 (새 창)"><i class="fa-solid fa-video"></i></button>
                     <button id="${r.id}-btn-del" onclick="deleteRobot('${r.id}')" class="hidden bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-500 hover:text-rose-400 px-2 py-1 rounded text-[10px] transition" title="로봇 삭제 (OFF 상태에서만)"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>
@@ -720,8 +720,23 @@ function wantedStack() {
 function mapName() { return mapState.meta ? mapState.meta.name : null; }
 // 켜진 로봇에 고른 미션의 스택이 없으면 자동으로 켠다 (미션·지도 조합마다 한 번. 실패해도 계속 다시 시도하지 않음)
 function prepKey() { return `${missionType}|${mapName()}`; }
+// 같은 GUI 가 여러 탭에 열려 있으면 자동 스택 실행은 먼저 열린 탭만 한다 (두 탭이 동시에 스택을 띄우면 서로의 노드를 정리해 버림)
+let guiSecondary = false;
+try {
+    const bc = new BroadcastChannel('pinky-fms-gui');
+    const opened = Date.now();
+    bc.onmessage = (e) => {
+        if (e.data && e.data.type === 'hello' && e.data.opened > opened) bc.postMessage({ type: 'here', opened });
+        if (e.data && e.data.type === 'here' && e.data.opened < opened && !guiSecondary) {
+            guiSecondary = true;
+            toast('이 GUI 가 다른 탭에서도 열려 있습니다. 이 탭에서는 주행 스택을 자동으로 켜지 않습니다 — 탭 하나만 쓰세요', 'err');
+        }
+    };
+    bc.postMessage({ type: 'hello', opened });
+} catch (e) { /* BroadcastChannel 없음: 확인 생략 */ }
+
 function autoPrepare() {
-    if (!mapName() || !rosOnline) return;
+    if (guiSecondary || !mapName() || !rosOnline) return;
     // 실패한 조합(autoKey)만 다시 시도하지 않는다. 다른 요청이 진행 중(stackStarting)이면 끝난 뒤 다음 주기에 다시 본다
     const list = Object.values(robots).filter(r => {
         if (!r.proc) { r.autoKey = null; return false; }      // 껐다 켜면 다시 시도
@@ -914,10 +929,17 @@ window.renderLog = function () {
 window.clearRosLog = function () { if (robots[logRobotId]) { robots[logRobotId].logs = []; renderLog(); } };
 
 // ==========================================
-// 8. 카메라 모달 (미구현 - 자리만 유지)
+// 8. 카메라 모달: 실시간 주행 영상
 // ==========================================
-// ---- 실시간 주행 영상: 차선 노드의 기록용 영상(/<ns>/camera/rec, JPEG 320×240, 5 Hz)을 rosbridge 로 받아 보여 준다 ----
+// ---- 실시간 주행 영상(/<ns>/camera/rec, JPEG 320×240, 5 Hz): Lane 은 차선 노드, Nav2 미션은 fms_camera_stream 이 낸다 ----
 let camTopic = null, camTimer = null;
+// 카메라 버튼: 별도 창(live.html)에 지도 위 로봇 이동 + 로봇 시점 영상. 팝업이 막히면 아래 모달로 영상만 보여 준다
+window.openLiveView = function (id) {
+    const w = window.open(`live.html?robot=${encodeURIComponent(id)}${mapName() ? '&map=' + encodeURIComponent(mapName()) : ''}`,
+        'pinky-fms-live', 'width=1400,height=820');
+    if (!w) { toast('팝업이 차단되어 영상만 이 창에 띄웁니다 (브라우저에서 이 사이트 팝업 허용)', 'err'); openCamModal(id); return; }
+    w.focus();
+};
 window.openCamModal = function (id) {
     const r = robots[id];
     document.getElementById('cam-robot-name').innerText = r ? displayName(id) : id;
@@ -939,9 +961,11 @@ window.openCamModal = function (id) {
     camTimer = setInterval(() => {                   // 영상이 끊기거나 처음부터 안 오면 이유를 보여 준다
         if (Date.now() - last < 3000) return;
         img.classList.add('hidden'); ph.classList.remove('hidden'); fpsEl.textContent = 'FPS: --';
-        status.textContent = r.stack === 'lane'
+        status.textContent = !r.stack
+            ? '영상은 미션 스택(Nav2 또는 Lane Following)이 켜져 있을 때 나옵니다 — 미션을 선택하세요'
+            : r.stack === 'lane'
             ? '영상이 오지 않습니다 — 차선 노드가 준비 중이거나 카메라 오류일 수 있습니다 (Log 확인)'
-            : '영상은 Lane Following(차선 주행) 스택이 켜져 있을 때만 나옵니다. Nav2 미션에는 카메라 노드가 없습니다';
+            : '영상이 오지 않습니다 — 카메라를 여는 중이거나(최대 수 초), 로봇 패키지가 아직 배포되지 않았을 수 있습니다 (OFF→ON)';
     }, 1000);
 };
 function stopCam() {
