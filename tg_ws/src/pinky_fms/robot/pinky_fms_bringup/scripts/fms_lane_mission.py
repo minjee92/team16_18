@@ -258,6 +258,7 @@ class FmsLaneMission(AutonomousDriveNode):
         if best is None:
             return None
         _, x, y, err = best
+        self.rq_t = now                                          # 재탐색 중 (상태 표시용)
         if now - self.__dict__.get('_rq_note_t', 0.0) > 3.0:
             self._rq_note_t = now
             self.get_logger().info(f'🧭 차선 재탐색: 지도상 차선 띠 ({x:.2f}, {y:.2f}) 쪽으로 ({math.degrees(err):+.0f}°)')
@@ -796,6 +797,12 @@ class FmsLaneMission(AutonomousDriveNode):
             state, detail = 'WAITING', f'{w} busy · {self.jn_busy}' if self.jn_busy else f'{w} check ({self.jn_choice})'
         elif self.traffic_role == 'priority' and time.monotonic() - self.tr_role_t < 5.0:
             state, detail = 'OWN DRIVING PRIORITY', 'lane'
+        elif self.tracker.lost_frames >= 20 and not (self.junction_latched and self.return_phase not in (None, 'following')):
+            # 차선을 놓침: lane_traffic 이 detail 의 'lost' 로 경보를 낸다
+            if time.monotonic() - self.__dict__.get('rq_t', 0.0) < 1.0:
+                state, detail = 'DRIVING', 'lane lost · reacquiring'
+            else:
+                state, detail = 'WAITING', 'lane lost'
         elif self.departing:
             state, detail = 'DRIVING', 'heading to goal'
         elif self.leg == 'outbound':
