@@ -9,6 +9,8 @@ REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 WS=${FMS_WS:-$HOME/pinky}
 CFG=${1:-$REPO/control_pc/ros/pinky_fms_core/config/robots.yaml}
 MAP=${MAP:-$REPO/maps/mission4_3_clean_1cm.yaml}     # fleet_traffic 충돌 방지용 지도. 비우면 충돌 방지 꺼짐
+LANES=${LANES:-$REPO/control_pc/backend/maps/mission4_3_lanes_1cm/map.yaml}     # lane_traffic: 차선 띠 (비우면 차선 마주침 조정 꺼짐)
+FLOOR=${FLOOR:-$REPO/control_pc/backend/maps/mission4_3_nolanes_1cm/map.yaml}   # lane_traffic: 바닥·벽
 source /opt/ros/jazzy/setup.bash
 source $WS/install/setup.bash
 source $REPO/control_pc/fms_env.sh $CFG
@@ -19,14 +21,16 @@ done
 PIDS=()
 cleanup() {
   echo; echo "[real] 종료 중... (로봇은 OFF 하지 않습니다. 끄려면 GUI 에서 OFF)"
-  for p in "${PIDS[@]}"; do kill -INT -- -"$p" 2>/dev/null || true; done
+  # 배경 실행(&)된 프로세스는 SIGINT 를 무시하도록 상속받는다(비대화형 셸). 그래서 TERM 을 먼저 보내고, 남으면 KILL 한다.
+  # (2026-10-09: 창을 닫았더니 백엔드·웹만 남아, 다음 실행이 '이미 실행 중' 으로 판단하고 ROS 없이 GUI 만 열림)
+  for p in "${PIDS[@]}"; do kill -INT -- -"$p" 2>/dev/null; kill -TERM -- -"$p" 2>/dev/null || true; done
   sleep 2
-  for p in "${PIDS[@]}"; do kill -TERM -- -"$p" 2>/dev/null || true; done
+  for p in "${PIDS[@]}"; do kill -KILL -- -"$p" 2>/dev/null || true; done
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP   # HUP: 바탕화면 아이콘으로 띄운 터미널 창을 닫았을 때도 정리
 
 setsid ros2 launch rosbridge_server rosbridge_websocket_launch.xml > /tmp/fms_real_rosbridge.log 2>&1 & PIDS+=($!)
-setsid ros2 launch pinky_fms_traffic traffic_core.launch.xml robots_file:=$CFG map_yaml:=$MAP > /tmp/fms_real_core.log 2>&1 & PIDS+=($!)
+setsid ros2 launch pinky_fms_traffic traffic_core.launch.xml robots_file:=$CFG map_yaml:=$MAP lanes_yaml:=$LANES floor_yaml:=$FLOOR > /tmp/fms_real_core.log 2>&1 & PIDS+=($!)
 ( cd $REPO/control_pc/backend && FMS_ROBOTS_FILE=$CFG exec setsid .venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000 > /tmp/fms_real_backend.log 2>&1 ) & PIDS+=($!)
 ( cd $REPO/control_pc/web && exec setsid python3 -m http.server 8080 --bind 127.0.0.1 > /tmp/fms_real_web.log 2>&1 ) & PIDS+=($!)
 

@@ -1,6 +1,6 @@
 # Pinky FMS (다중 로봇 관제 플랫폼)
 
-Pinky Pro 로봇 여러 대를 웹 GUI 로 관제한다. 기존 `pinky_pro` 저장소는 **수정하지 않고**, 관제용 코드만 이 저장소에 둔다.
+Pinky Pro 로봇 여러 대를 웹 GUI 로 관제한다. **운용 방법은 [사용자 매뉴얼](docs/USER_MANUAL.md)** 을 본다. 기존 `pinky_pro` 저장소는 **수정하지 않고**, 관제용 코드만 이 저장소에 둔다.
 모든 로봇은 **같은 ROS_DOMAIN_ID(16)** 안에서 namespace(`amr_01`, `amr_02` ...)로 구분한다. 로봇 ID·IP·비밀번호는 코드에 쓰지 않고 GUI 에서 입력한다.
 
 ## 어디서 실행하는 파일인가
@@ -13,7 +13,7 @@ Pinky Pro 로봇 여러 대를 웹 GUI 로 관제한다. 기존 `pinky_pro` 저�
 | `scripts/` | 관제 PC | `run_real.sh`(실물 스택 한 번에), `run_sim.sh`(가제보+관제), `run_demo.sh`(가짜 로봇) |
 | `maps/` | 공용 | 사용하는 지도(`mission4_3_clean_1cm` 등). 로봇 홈에도 복사해서 Nav2 에 넘긴다 |
 | `tools/` | 관제 PC | 미션·코스트맵 기록기, 결과 요약, 도착 허용 오차 분석 |
-| `docs/` | | 상세 설명(`details.md`), 네트워크 점검표 |
+| `docs/` | | **사용자 매뉴얼(`USER_MANUAL.md`: GUI 실행부터 미션별 진행까지)**, 상세 설명(`details.md`), 네트워크 점검표 |
 
 ```
 웹 GUI ─ HTTP ─► backend ─ SSH ─► 로봇: robot_bringup(+ robot_nav: Nav2·AMCL·라이다 필터)

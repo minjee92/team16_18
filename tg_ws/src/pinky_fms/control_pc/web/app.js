@@ -64,9 +64,11 @@ function closeModal(modalId, contentId, callback) {
 function toast(msg, kind = 'info') {
     const colors = { info: 'border-cyan-600 text-cyan-200', ok: 'border-emerald-600 text-emerald-200', err: 'border-rose-600 text-rose-200' };
     const el = document.createElement('div');
-    el.className = `bg-slate-800 border ${colors[kind]} rounded-lg px-4 py-2 text-xs shadow-xl max-w-xs`;
+    el.className = `bg-slate-800/95 border ${colors[kind]} rounded-lg px-4 py-2 text-xs shadow-xl text-center`;
     el.textContent = msg;
-    document.getElementById('toast-area').appendChild(el);
+    const area = document.getElementById('toast-area');
+    area.prepend(el);                                       // 새 알림이 맨 위 (제목 줄 가운데)
+    while (area.children.length > 4) area.lastElementChild.remove();
     setTimeout(() => el.remove(), 5000);
 }
 
@@ -87,7 +89,8 @@ const displayName = (id) => id.toUpperCase().replace('_', '-');
 // ==========================================
 // 3. ROS 구독/발행 (로봇 이름이 아니라 /fleet/* 의 robot_id 로 구분)
 // ==========================================
-let missionPub = null, globalCmdPub = null;
+let missionPub = null, globalCmdPub = null, trafficModePub = null;
+let trafficState = null;   // 조정 층이 알려 주는 교통 관제 방식 {mode, available, msg}
 const topicHandles = [];
 
 function setupRosTopics() {
@@ -96,6 +99,7 @@ function setupRosTopics() {
 
     missionPub = new ROSLIB.Topic({ ros, name: '/fleet/mission_request', messageType: 'pinky_fms_interfaces/msg/MissionRequest' });
     globalCmdPub = new ROSLIB.Topic({ ros, name: '/fleet/global_cmd', messageType: 'std_msgs/msg/String' });
+    trafficModePub = new ROSLIB.Topic({ ros, name: '/fleet/traffic_mode', messageType: 'std_msgs/msg/String' });
 
     const sub = (name, type, cb) => { const t = new ROSLIB.Topic({ ros, name, messageType: type }); t.subscribe(cb); topicHandles.push(t); };
 
@@ -108,6 +112,22 @@ function setupRosTopics() {
         requestMapDraw();
         updateCard(r);
         updateKpis();
+    });
+
+    // 조정 층이 알려 주는 로봇별 기술 스택 준비 상태 (bringup · Nav2 · AMCL · 위치추정 · 빠져나오기 · LCD · 차선)
+    sub('/fleet/robot_ready', 'std_msgs/msg/String', (m) => {
+        let list;
+        try { list = JSON.parse(m.data); } catch (e) { return; }
+        list.forEach(x => { const r = robots[x.robot]; if (r) { r.ready = { ...x, t: Date.now() }; updateCard(r); } });
+    });
+
+    // 조정 층의 교통 관제 방식 (encounter / predict / off)
+    sub('/fleet/traffic_state', 'std_msgs/msg/String', (m) => {
+        let next;
+        try { next = JSON.parse(m.data); } catch (e) { return; }
+        if (next.msg && (!trafficState || trafficState.msg !== next.msg)) toast(`Traffic Management: ${next.msg}`, 'err');
+        trafficState = next;
+        renderMissionPanel();
     });
 
     // 미션 층이 올려주는 진행 상태
@@ -169,13 +189,15 @@ function renderFleet() {
                 <h3 class="font-bold text-white text-sm">${n}
                     <span id="${r.id}-state" class="ml-2 text-[10px] px-1.5 py-0.5 rounded uppercase">--</span>
                     <span id="${r.id}-pingbadge" class="hidden ml-1 text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono"></span>
+                    <span id="${r.id}-stackbadge" class="hidden ml-1 text-[10px] px-1.5 py-0.5 rounded font-mono"></span>
                     <span id="${r.id}-connbadge" class="hidden ml-1 text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded"></span>
                     <span id="${r.id}-errbadge" class="hidden ml-1 text-[10px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded"></span>
                 </h3>
                 <div class="flex gap-1">
+                    <button id="${r.id}-btn-dock" onclick="returnDock('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-emerald-400 px-2 py-1 rounded text-[10px] transition" title="도크(마지막 Init Pose 위치)로 복귀"><i class="fa-solid fa-house mr-1"></i>Dock</button>
                     <button onclick="openLogModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-amber-400 px-2 py-1 rounded text-[10px] transition"><i class="fa-solid fa-terminal mr-1"></i>Log</button>
                     <button onclick="openDiagModal('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition"><i class="fa-solid fa-network-wired mr-1"></i>Diag</button>
-                    <button onclick="openCamModal('${n}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition" title="카메라 (미구현)"><i class="fa-solid fa-video"></i></button>
+                    <button onclick="openLiveView('${r.id}')" class="bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-cyan-400 px-2 py-1 rounded text-[10px] transition" title="Live View: 지도 위 로봇 이동 + 로봇 시점 주행 영상 (새 창)"><i class="fa-solid fa-video"></i></button>
                     <button id="${r.id}-btn-del" onclick="deleteRobot('${r.id}')" class="hidden bg-slate-900 hover:bg-slate-700 border border-slate-700 text-slate-500 hover:text-rose-400 px-2 py-1 rounded text-[10px] transition" title="로봇 삭제 (OFF 상태에서만)"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>
@@ -185,21 +207,22 @@ function renderFleet() {
                 <div class="flex-1 bg-slate-900 h-1.5 rounded-full overflow-hidden"><div id="${r.id}-battery-bar" class="bg-slate-500 h-full transition-all duration-500" style="width:0%"></div></div>
                 <span id="${r.id}-battery-text" class="text-[10px] text-slate-400 font-mono w-8 text-right">--%</span>
             </div>
-            <p id="${r.id}-pose" class="text-[10px] text-slate-500 font-mono mb-2">pose: --</p>
+            <p id="${r.id}-pose" class="text-[10px] text-slate-500 font-mono mb-1">pose: --</p>
+            <div id="${r.id}-ready" class="flex flex-wrap items-center gap-1 mb-2 text-[9px] font-mono"></div>
             <div class="bg-slate-900/50 rounded-lg p-2.5 border border-slate-700">
                 <p class="text-[9px] text-slate-500 mb-1 font-bold uppercase"><i class="fa-solid fa-list-check mr-1"></i>Mission</p>
-                <p id="${r.id}-task" class="text-[11px] text-slate-400">대기 중</p>
+                <p id="${r.id}-task" class="text-[11px] text-slate-400">Idle</p>
             </div>
             <div id="${r.id}-staged" class="hidden mt-2 flex items-center justify-between gap-2 text-[11px] rounded-lg px-2.5 py-1.5 border border-cyan-700/60 bg-cyan-500/10 text-cyan-300">
                 <span id="${r.id}-staged-text" class="font-mono"></span>
-                <button onclick="clearStaged('${r.id}')" class="text-slate-400 hover:text-rose-400 underline">해제</button>
+                <button onclick="clearStaged('${r.id}')" class="text-slate-400 hover:text-rose-400 underline">Clear</button>
             </div>
             <div class="mt-3 grid grid-cols-4 gap-1.5">
                 <button id="${r.id}-btn-power" class="text-white text-[11px] py-1.5 rounded font-bold"></button>
-                <button id="${r.id}-btn-initpose" onclick="startInitialPose('${r.id}')" class="text-[11px] py-1.5 rounded font-bold" title="맵에서 로봇의 현재 위치를 지정 (AMCL 초기 위치)"><i class="fa-solid fa-crosshairs mr-1"></i>초기위치</button>
-                <button id="${r.id}-btn-goal" onclick="startGoalTool('${r.id}')" class="text-[11px] py-1.5 rounded font-bold" title="맵에서 이 로봇의 목표 지점을 지정 (출발은 '주행')"><i class="fa-solid fa-flag-checkered mr-1"></i>목표지정</button>
-                <button id="${r.id}-btn-go" onclick="goOrPrompt('${r.id}')" class="text-[11px] py-1.5 rounded font-bold"><i class="fa-solid fa-play mr-1"></i>주행</button>
-                <button id="${r.id}-btn-cancel" onclick="cancelMission('${r.id}')" class="hidden col-start-4 bg-rose-950/40 hover:bg-rose-900 border border-rose-900 text-rose-300 text-[11px] py-1.5 rounded font-bold"><i class="fa-solid fa-ban mr-1"></i>취소</button>
+                <button id="${r.id}-btn-initpose" onclick="startInitialPose('${r.id}')" class="text-[11px] py-1.5 rounded font-bold" title="맵에서 로봇의 현재 위치를 지정 (AMCL 초기 위치)"><i class="fa-solid fa-crosshairs mr-1"></i>Init Pose</button>
+                <button id="${r.id}-btn-goal" onclick="startGoalTool('${r.id}')" class="text-[11px] py-1.5 rounded font-bold" title="맵에서 이 로봇의 목표 지점을 지정 (출발은 '주행')"><i class="fa-solid fa-flag-checkered mr-1"></i>Set Goal</button>
+                <button id="${r.id}-btn-go" onclick="goOrPrompt('${r.id}')" class="text-[11px] py-1.5 rounded font-bold"><i class="fa-solid fa-play mr-1"></i>Go</button>
+                <button id="${r.id}-btn-cancel" onclick="cancelMission('${r.id}')" class="hidden col-start-4 bg-rose-950/40 hover:bg-rose-900 border border-rose-900 text-rose-300 text-[11px] py-1.5 rounded font-bold"><i class="fa-solid fa-ban mr-1"></i>Cancel</button>
             </div>
         </li>`);
         updateCard(r);
@@ -218,6 +241,13 @@ function updateCard(r) {
     $('state').textContent = st;
     card.className = card.className.replace(/border-(slate|amber|sky|emerald)-\d+/, border);
 
+    const sb = $('stackbadge');
+    if (sb) {
+        const label = !r.proc ? '' : r.stack === 'nav' ? (r.needInitPose ? 'NAV2 · Init Pose' : 'NAV2') : r.stack === 'lane' ? 'LANE' : '';
+        sb.classList.toggle('hidden', !label);
+        sb.textContent = label;
+        sb.className = `ml-1 text-[10px] px-1.5 py-0.5 rounded font-mono ${r.stack === 'lane' ? 'bg-violet-500/20 text-violet-300' : r.needInitPose ? 'bg-amber-500/20 text-amber-300' : 'bg-cyan-500/20 text-cyan-300'}`;
+    }
     const pb = $('pingbadge');
     if (pb) {
         const pg = r.ping;
@@ -254,8 +284,14 @@ function updateCard(r) {
         : localized ? `pose: x ${r.status.x.toFixed(2)}  y ${r.status.y.toFixed(2)}  yaw ${(r.status.yaw * 180 / Math.PI).toFixed(0)}°`
         : 'pose: 위치 미확인 (맵에서 초기 위치를 지정하세요)';
     $('pose').className = `text-[10px] font-mono mb-2 ${online && !localized ? 'text-amber-400' : 'text-slate-500'}`;
+    ensureLaneSub(r);
+    renderReady(r);
     const t = r.task;
-    if (t && (t.state === 'ASSIGNED' || t.state === 'RUNNING')) {
+    const ln = r.stack === 'lane' && r.lane && Date.now() - r.lane.t < 3000 ? r.lane : null;   // 차선 스택이 아니면 남은 노드의 옛 상태를 보여 주지 않는다
+    if (ln) {
+        $('task').className = `text-[11px] ${ln.state === 'FAILED' ? 'text-rose-400' : ln.state === 'ARRIVED' ? 'text-sky-400' : 'text-violet-300'}`;
+        $('task').textContent = `Lane Following · ${ln.state}` + (ln.detail ? ` · ${ln.detail}` : '') + (ln.dist !== null && ln.dist !== undefined ? ` · ${ln.dist.toFixed(1)} m` : '');
+    } else if (t && (t.state === 'ASSIGNED' || t.state === 'RUNNING')) {
         $('task').className = 'text-[11px] text-emerald-400';
         $('task').textContent = `[${t.mission_id}] ${t.state}` + (t.state === 'RUNNING' && t.distance_remaining > 0 ? ` · 남은 거리 ${t.distance_remaining.toFixed(2)} m` : '');
     } else if (t) {
@@ -275,12 +311,13 @@ function updateCard(r) {
     }
     const sg = r.staged;
     $('staged').classList.toggle('hidden', !sg);
-    if (sg) $('staged-text').textContent = `목표 대기: x ${sg.x.toFixed(2)}, y ${sg.y.toFixed(2)}, ${(sg.yaw * 180 / Math.PI).toFixed(0)}°`;
+    if (sg) $('staged-text').textContent = `Goal staged: x ${sg.x.toFixed(2)}, y ${sg.y.toFixed(2)}, ${(sg.yaw * 180 / Math.PI).toFixed(0)}°`;
 
     // 버튼 상태: 초기위치 → 목표지정 → 주행 순서로 안내한다
     const mapReady = !!mapState.meta;
     const armed = (type) => !!mapTool && mapTool.type === type && mapTool.robotId === r.id;
-    const canGo = st === 'IDLE' && localized && !!sg;
+    const needNav = stackNeedsStart(r);
+    const canGo = st === 'IDLE' && !!sg && (needNav || (localized && !r.needInitPose));
     const base = 'text-[11px] py-1.5 rounded font-bold transition';
     const style = (btn, enabled, kind, armedNow) => {
         btn.disabled = !enabled;
@@ -291,18 +328,99 @@ function updateCard(r) {
         btn.className = `${base} ${color} ${enabled ? '' : 'opacity-40 cursor-not-allowed'}`;
     };
     const bi = $('btn-initpose'), bg = $('btn-goal'), go = $('btn-go');
-    style(bi, online && mapReady, !localized && online ? 'warn' : '', armed('initpose'));
-    style(bg, online && mapReady, localized && !sg ? 'next' : '', armed('goal'));
-    bi.title = !online ? '로봇이 켜져 있어야 합니다' : !mapReady ? '먼저 맵을 업로드/선택하세요' : '맵에서 로봇의 현재 위치를 지정 (AMCL 초기 위치)';
-    bg.title = !online ? '로봇이 켜져 있어야 합니다' : !mapReady ? '먼저 맵을 업로드/선택하세요' : "맵에서 이 로봇의 목표 지점을 지정 (출발은 '주행')";
+    const brReady = bringupReady(r);
+    style(bi, brReady && mapReady, (!localized || r.needInitPose) && online ? 'warn' : '', armed('initpose'));
+    style(bg, brReady && mapReady, localized && !sg ? 'next' : '', armed('goal'));
+    bi.title = !brReady ? '로봇을 ON 하고 bringup 이 준비되어야 합니다' : !mapReady ? '먼저 맵을 업로드/선택하세요' : '맵에서 로봇의 현재 위치를 지정 (AMCL 초기 위치)';
+    bg.title = !brReady ? '로봇을 ON 하고 bringup 이 준비되어야 합니다' : !mapReady ? '먼저 맵을 업로드/선택하세요' : "맵에서 이 로봇의 목표 지점을 지정 (출발은 '주행')";
     go.className = `${base} ${canGo ? 'bg-cyan-700 hover:bg-cyan-600 text-white ring-2 ring-cyan-300' : 'bg-slate-700 text-slate-300 opacity-40 cursor-not-allowed'}`;
     go.disabled = !canGo;
     go.classList.toggle('hidden', st === 'BUSY');
-    go.title = st !== 'IDLE' ? '대기(IDLE) 상태에서만 출발합니다' : !localized ? "먼저 '초기위치'를 지정하세요" : !sg ? "먼저 '목표지정'으로 목표를 찍으세요" : '이 로봇만 출발';
-    $('btn-cancel').classList.toggle('hidden', st !== 'BUSY');
+    go.title = st !== 'IDLE' ? '대기(IDLE) 상태에서만 출발합니다' : !sg ? "먼저 'Set Goal' 로 목표를 찍으세요"
+        : needNav ? '주행 스택이 꺼져 있습니다: 누르면 켜고 Init Pose 를 기다립니다'
+        : r.needInitPose || !localized ? "먼저 'Init Pose' 를 지정하세요"
+        : missionType === 'lane' ? 'Lane Following: 차선을 따라 목적지까지 갔다가 지금 위치로 돌아옵니다' : 'Goal Navigation: 이 로봇만 출발';
+    const rc = readyChecks(r);
+    if (rc.summary !== 'READY' && st === 'IDLE') go.title += `\n(준비 안 됨: ${rc.reason})`;
+    $('btn-cancel').classList.toggle('hidden', st !== 'BUSY' && !laneActive(r));
+    const dk = $('btn-dock'), dkOn = bringupReady(r);
+    if (dk) { dk.disabled = !dkOn; dk.classList.toggle('opacity-40', !dkOn); dk.classList.toggle('cursor-not-allowed', !dkOn); }
+}
+
+// ---- 기술 스택 준비 상태 (선택한 미션 기준) ----
+const LANE_NODE_TIMEOUT_MS = 40000;   // 차선 스택을 켠 뒤 lane_status 가 이만큼 없으면 노드가 죽은 것으로 본다
+function readyChecks(r) {
+    const rd = r.ready && Date.now() - r.ready.t < 3000 ? r.ready : null;
+    const ok = (v) => v ? 'ok' : 'no';
+    if (!rd) return { items: [['Status', 'wait', 'traffic_core 의 준비 상태를 기다리는 중']], summary: 'NO DATA', reason: 'traffic_core 실행 확인' };
+    const items = [['Bringup', ok(rd.bringup), '로봇 기본 노드(모터·라이다·odom)가 데이터를 보내는가']];
+    if (missionType === 'lane') {
+        items.push(['Lane stack', r.stack === 'lane' ? 'ok' : 'no', 'robot_lane 스택 실행 (미션을 고르면 켜짐)']);
+        items.push(['AMCL', rd.amcl === 'active' ? 'ok' : rd.amcl ? 'wait' : 'no', `AMCL 상태: ${rd.amcl || '없음'}`]);
+        const laneUp = !!rd.lane || (!!r.lane && Date.now() - r.lane.t < 3000);
+        // navStartedAt 은 GUI 가 스택을 켤 때만 기록된다: 새로고침 뒤에는 처음 관찰한 시각을 기준으로 삼는다
+        if (r.stack !== 'lane') r.laneSeenStackAt = null;
+        else if (!r.navStartedAt && !r.laneSeenStackAt) r.laneSeenStackAt = Date.now();
+        const laneSince = r.navStartedAt || r.laneSeenStackAt;
+        const laneDead = !laneUp && r.stack === 'lane' && !!laneSince && Date.now() - laneSince > LANE_NODE_TIMEOUT_MS;
+        items.push(['Lane node', laneUp ? 'ok' : laneDead ? 'no' : r.stack === 'lane' ? 'wait' : 'no',
+            laneUp ? `차선 노드: ${rd.lane || r.lane.state} ${rd.lane_detail || ''}`
+                : laneDead ? '차선 노드가 시작되지 않음 – Log(Launch 출력)에서 카메라/YOLO 오류 확인'
+                : '차선 노드(YOLO·카메라) 준비 중이거나 꺼짐']);
+        items.push(['Localized', ok(rd.localized), 'AMCL 이 켜진 뒤 초기 위치를 받았는가 (Init Pose)']);
+    } else {
+        items.push(['Nav2', rd.nav === 'active' ? 'ok' : rd.nav ? 'wait' : 'no', `bt_navigator 상태: ${rd.nav || '없음 (미션을 고르면 켜짐)'}`]);
+        items.push(['Localized', ok(rd.localized), 'AMCL 이 켜진 뒤 초기 위치를 받았는가 (Init Pose)']);
+        items.push(['Escape', rd.escape ? 'ok' : 'opt', '벽 빠져나오기 노드 (Nav2 와 함께 뜸, 없으면 예전 방식)']);
+    }
+    items.push(['LCD', rd.lcd ? 'ok' : 'opt', '로봇 LCD 상태 노드']);
+    const missing = items.filter(([, st]) => st === 'no' || st === 'wait').map(([n]) => n);
+    return { items, summary: missing.length ? 'NOT READY' : 'READY', reason: missing.join(', ') };
+}
+
+function renderReady(r) {
+    const el = document.getElementById(`${r.id}-ready`);
+    if (!el) return;
+    if (!r.proc) { el.innerHTML = ''; return; }
+    const { items, summary, reason } = readyChecks(r);
+    const color = { ok: 'text-emerald-400', no: 'text-rose-400', wait: 'text-amber-300', opt: 'text-slate-500' };
+    const mark = { ok: '✓', no: '✗', wait: '…', opt: '–' };
+    el.innerHTML = `<span class="px-1.5 py-0.5 rounded font-bold ${summary === 'READY' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}" title="${reason ? '준비 안 됨: ' + reason : '선택한 미션을 실행할 준비 완료'}">${summary}</span>`
+        + items.map(([n, st, tip]) => `<span class="${color[st]}" title="${tip}">${mark[st]} ${n}</span>`).join('<span class="text-slate-600">·</span>');
+}
+
+// bringup 이 준비된 로봇: 조정 층이 상태를 올려 주고(IDLE/BUSY), 준비 상태에서도 bringup 이 확인된 경우
+function bringupReady(r) {
+    const st = effectiveState(r);
+    if (st !== 'IDLE' && st !== 'BUSY') return false;
+    const rd = r.ready && Date.now() - r.ready.t < 3000 ? r.ready : null;
+    return !rd || !!rd.bringup;
+}
+
+// 준비 전에는 쓸 수 없는 전역 조작(미션 선택·자동 배정·전체 도크)을 막고, 준비되면 연다. E-STOP 은 항상 켜 둔다
+function refreshGates() {
+    const any = Object.values(robots).some(bringupReady);
+    const why = '로봇을 ON 하고 bringup 이 준비되면(카드 상태 IDLE) 쓸 수 있습니다';
+    const gate = (el, on, title) => {
+        if (!el) return;
+        el.disabled = !on;
+        el.classList.toggle('opacity-40', !on);
+        el.classList.toggle('cursor-not-allowed', !on);
+        if (!on) { if (el.dataset.t === undefined) el.dataset.t = el.title || ''; el.title = title; }
+        else if (el.dataset.t !== undefined) { el.title = el.dataset.t; delete el.dataset.t; }
+    };
+    gate(document.getElementById('mission-type'), any, why);
+    gate(document.getElementById('btn-auto-tool'), any && !!mapState.meta, any ? '먼저 맵을 선택하세요' : why);
+    gate(document.getElementById('btn-return'), any, why);
+    const desc = document.getElementById('mission-desc');
+    if (desc) {
+        desc.textContent = any ? MISSION_DESC[missionType] : `⏳ ${why}. 미션은 그 뒤에 고릅니다.`;
+        desc.classList.toggle('text-amber-400', !any);
+    }
 }
 
 function updateKpis() {
+    refreshGates();
     const list = Object.values(robots);
     const states = list.map(effectiveState);
     document.getElementById('kpi-total').textContent = list.length;
@@ -352,6 +470,7 @@ window.submitOn = async function () {
         toast(`${displayName(id)}: ${res.note}`, 'ok');
         closeOnModal();
         updateCard(robots[id]); updateKpis();
+        if (res.running) prepareMission([robots[id]]);      // 고른 미션의 주행 스택을 바로 켠다 → Init Pose
     } catch (e) {
         err.textContent = e.message; err.classList.remove('hidden');
     } finally {
@@ -454,6 +573,7 @@ async function pollProcStatus() {
         try {
             const st = await api('GET', `/robots/${r.id}/status`);
             r.proc = st.running; r.authRequired = !!st.auth_required; r.reachable = st.reachable;
+            if (st.stack !== undefined) r.stack = st.stack;     // 실행 중인 주행 스택 (nav / lane / null)
             r.ping = r.proc ? await api('GET', `/robots/${r.id}/ping`) : null;
             updateCard(r);
         } catch (e) {
@@ -462,6 +582,7 @@ async function pollProcStatus() {
     }
     setBadge(ok);
     updateKpis();
+    autoPrepare();
 }
 
 // ==========================================
@@ -563,19 +684,183 @@ window.clearAllStaged = function () {
     refreshStartAll();
 };
 
-// 카드의 주행 버튼: 지정해 둔 목표로 이 로봇만 출발
-window.goOrPrompt = function (id) {
+// ---- Lane Following 미션 (실행 층: robot_lane 스택, 상태는 /<ns>/lane_status) ----
+const laneTopics = {};
+function laneActive(r) {
+    return r.stack === 'lane' && !!r.lane && Date.now() - r.lane.t < 3000 && !['ARRIVED', 'FAILED', 'IDLE'].includes(r.lane.state);
+}
+function ensureLaneSub(r) {
+    if (!ros || !r.ns) return;
+    const key = `${r.ns}|${rosGeneration}`;
+    if (laneTopics[r.id] && laneTopics[r.id].key === key) return;
+    const t = new ROSLIB.Topic({ ros, name: `/${r.ns}/lane_status`, messageType: 'std_msgs/msg/String' });
+    t.subscribe((m) => {
+        let d;
+        try { d = JSON.parse(m.data); } catch (e) { return; }
+        const prev = r.lane ? r.lane.state : null;
+        r.lane = { ...d, t: Date.now() };
+        // 스택은 끄지 않는다: 같은 스택(같은 위치 추정)으로 다음 목적지를 바로 받는다
+        if (['DRIVING', 'RETURNING', 'WAITING'].includes(prev) && (d.state === 'ARRIVED' || d.state === 'FAILED')) {
+            toast(`${displayName(r.id)} Lane Following ${d.state === 'ARRIVED' ? '완료 (출발점 도착) — 다음 목적지를 지정할 수 있습니다' : '실패'}`, d.state === 'ARRIVED' ? 'ok' : 'err');
+        }
+        if (d.state === 'IDLE' || d.state === 'ARRIVED') r.goalPose = null;
+        updateCard(r);
+    });
+    laneTopics[r.id] = { key, topic: t };
+}
+
+// 관제 → 차선 노드 명령 (/<ns>/lane_cmd). rosbridge 첫 발행이 유실될 수 있어 노드가 cmd_id 로 확인할 때까지 몇 번 보낸다
+const laneCmdTopics = {};
+let laneCmdSeq = Date.now() % 1000000000;
+function sendLaneCmd(r, cmd, extra) {
+    if (!ros || !rosOnline) { toast('ROS 에 연결되지 않았습니다', 'err'); return false; }
+    const key = `${r.ns}|${rosGeneration}`;
+    if (!laneCmdTopics[r.id] || laneCmdTopics[r.id].key !== key) {
+        laneCmdTopics[r.id] = { key, topic: new ROSLIB.Topic({ ros, name: `/${r.ns}/lane_cmd`, messageType: 'std_msgs/msg/String' }) };
+    }
+    const t = laneCmdTopics[r.id].topic, id = ++laneCmdSeq;
+    const data = JSON.stringify({ id, cmd, ...(extra || {}) });
+    let n = 0;
+    const tick = () => {
+        if (r.lane && r.lane.cmd_id === id) return;                 // 수신 확인
+        if (n++ >= 8) { toast(`${displayName(r.id)}: 차선 노드가 명령을 확인하지 않습니다 (로봇에 새 fms_lane_mission 배포 필요?)`, 'err'); return; }
+        if (rosOnline) t.publish(new ROSLIB.Message({ data }));
+        setTimeout(tick, 600);
+    };
+    tick();
+    return true;
+}
+
+async function startLane(r) {
+    if (!r.staged) { toast(`${displayName(r.id)}: 먼저 'Set Goal' 로 목적지를 찍으세요`, 'err'); return; }
+    if (stackNeedsStart(r)) { await prepareMission([r]); return; }
+    if (r.needInitPose || !(r.status && r.status.localized)) {
+        toast(`${displayName(r.id)}: 먼저 Init Pose 를 지정하세요`, 'err'); armTool('initpose', r.id); return;
+    }
+    const g = r.staged;
+    if (!sendLaneCmd(r, 'go', { x: g.x, y: g.y })) return;
+    r.goalPose = { x: g.x, y: g.y, yaw: g.yaw }; r.staged = null;
+    toast(`${displayName(r.id)} Lane Following 출발: 목적지까지 갔다가 지금 위치로 돌아옵니다`, 'info');
+    updateCard(r); refreshStartAll();
+}
+
+function cancelLane(r) {
+    if (sendLaneCmd(r, 'cancel')) { r.goalPose = null; toast(`${displayName(r.id)} Lane Following 취소 (정지)`, 'info'); updateCard(r); }
+}
+
+// ---- 미션 준비: 미션을 고르면(또는 로봇을 켜면) 그 미션의 주행 스택을 바로 켜서 Init Pose 부터 할 수 있게 한다 ----
+function wantedStack() {
+    const w = missionType === 'lane' ? 'lane' : 'nav';
+    return (cfgInfo.stacks || []).includes(w) ? w : null;
+}
+function mapName() { return mapState.meta ? mapState.meta.name : null; }
+// 켜진 로봇에 고른 미션의 스택이 없으면 자동으로 켠다 (미션·지도 조합마다 한 번. 실패해도 계속 다시 시도하지 않음)
+function prepKey() { return `${missionType}|${mapName()}`; }
+// 같은 GUI 가 여러 탭에 열려 있으면 자동 스택 실행은 먼저 열린 탭만 한다 (두 탭이 동시에 스택을 띄우면 서로의 노드를 정리해 버림)
+let guiSecondary = false;
+try {
+    const bc = new BroadcastChannel('pinky-fms-gui');
+    const opened = Date.now();
+    bc.onmessage = (e) => {
+        if (e.data && e.data.type === 'hello' && e.data.opened > opened) bc.postMessage({ type: 'here', opened });
+        if (e.data && e.data.type === 'here' && e.data.opened < opened && !guiSecondary) {
+            guiSecondary = true;
+            toast('이 GUI 가 다른 탭에서도 열려 있습니다. 이 탭에서는 주행 스택을 자동으로 켜지 않습니다 — 탭 하나만 쓰세요', 'err');
+        }
+    };
+    bc.postMessage({ type: 'hello', opened });
+} catch (e) { /* BroadcastChannel 없음: 확인 생략 */ }
+
+function autoPrepare() {
+    if (guiSecondary || !mapName() || !rosOnline) return;
+    // 실패한 조합(autoKey)만 다시 시도하지 않는다. 다른 요청이 진행 중(stackStarting)이면 끝난 뒤 다음 주기에 다시 본다
+    const list = Object.values(robots).filter(r => {
+        if (!r.proc) { r.autoKey = null; return false; }      // 껐다 켜면 다시 시도
+        return !r.stackStarting && r.autoKey !== prepKey() && stackNeedsStart(r) && effectiveState(r) !== 'BUSY' && !laneActive(r);
+    });
+    if (list.length) prepareMission(list);
+}
+// r.stackOverride: 미션과 다른 스택을 잠시 쓰는 로봇 (예: Lane Following 중 RETURN DOCK 을 Nav2 로). 설정돼 있으면 자동 전환하지 않는다
+function stackNeedsStart(r) { const w = r.stackOverride || wantedStack(); return !!w && !!r.proc && r.stack !== w; }
+
+async function prepareStack(r, force) {
+    const want = r.stackOverride || wantedStack();
+    if (!want || !r.proc || r.stackStarting || (!force && !stackNeedsStart(r))) return false;
+    if (effectiveState(r) === 'BUSY' || laneActive(r)) {
+        toast(`${displayName(r.id)}: 진행 중인 미션이 있어 주행 스택을 바꾸지 않았습니다 (취소한 뒤 미션을 다시 고르세요)`, 'err');
+        r.autoKey = prepKey();
+        return false;
+    }
+    r.stackStarting = true;
+    let res;
+    try { res = await api('POST', `/robots/${r.id}/stack`, { stack: want, map: r.stackMapOverride || mapName() }); }   /* stackMapOverride: 잠시 다른 지도 (Nav2 도크는 차선 지운 지도) */
+    catch (e) { toast(`${displayName(r.id)} ${want === 'lane' ? 'Lane Following' : 'Nav2'} 시작 실패: ${e.message}`, 'err'); r.autoKey = prepKey(); return false; }
+    finally { r.stackStarting = false; }
+    if (res && res.started === false) { r.stack = want; updateCard(r); return false; }    // 같은 지도로 이미 실행 중
+    r.stack = want; r.needInitPose = true; r.navStartedAt = Date.now(); r.lane = null; r.goalPose = null;
+    updateCard(r);
+    return true;
+}
+// force: 스택이 이미 맞아도 백엔드에 다시 요청한다 (지도를 바꾼 경우: 다른 지도로 떠 있으면 백엔드가 새로 띄움)
+async function prepareMission(list, force) {
+    const want = wantedStack();
+    if (!mapName()) { toast('먼저 지도를 선택하거나 업로드하세요 (로봇도 이 지도로 위치를 잡습니다)', 'err'); return; }
+    const todo = list.filter(r => r.proc && !r.stackStarting && (force ? effectiveState(r) !== 'BUSY' && !laneActive(r) : stackNeedsStart(r)));
+    if (!todo.length) return;
+    toast(`${todo.map(r => displayName(r.id)).join(', ')}: ${want === 'lane' ? 'Lane Following' : 'Nav2'} 스택 준비 중 (지도 ${mapName()})…`, 'info');
+    const ok = await Promise.all(todo.map(r => prepareStack(r, force)));
+    const started = todo.filter((r, i) => ok[i]);
+    if (!started.length) return;
+    toast(`${started.map(r => displayName(r.id)).join(', ')}: 맵에서 Init Pose(현재 위치)를 지정하세요`, 'info');
+    if (!mapTool || mapTool.type !== 'initpose') armTool('initpose', started[0].id);
+}
+
+// ---- 주행 스택 (실행 층): Goal Navigation 은 로봇의 Nav2 가 필요하다. 꺼져 있으면 백엔드(수명주기)에 켜 달라고 한다 ----
+const NAV_WARMUP_MS = 15000;     // Nav2 를 켠 뒤 AMCL 이 초기 위치를 받을 수 있을 때까지 기다리는 시간
+function navNeedsStart(r) { return missionType !== 'lane' && (cfgInfo.stacks || []).includes('nav') && !!r.proc && r.stack !== 'nav'; }
+
+async function ensureNav(r) {
+    if (!navNeedsStart(r)) return true;
+    if (r.stack === 'lane' && !confirm(`${displayName(r.id)} 는 Lane Following 스택이 실행 중입니다.\n중지하고 Nav2 로 전환할까요?`)) return false;
+    try { await api('POST', `/robots/${r.id}/stack`, { stack: 'nav' }); }
+    catch (e) { toast(`${displayName(r.id)} Nav2 시작 실패: ${e.message}`, 'err'); return false; }
+    r.stack = 'nav'; r.needInitPose = true; r.navStartedAt = Date.now();
+    toast(`${displayName(r.id)}: Nav2 시작 중 — 맵에서 Init Pose 를 지정하세요 (60초 안)`, 'info');
+    armTool('initpose', r.id);
+    updateCard(r);
+    return false;
+}
+
+function sendStaged(r) {
+    const g = r.staged;
+    if (g && launchNav(r.id, g.x, g.y, g.yaw)) { r.staged = null; updateCard(r); refreshStartAll(); }
+}
+
+// 카드의 Go 버튼 (Goal Navigation): 지정해 둔 목표로 이 로봇만 출발
+window.goOrPrompt = async function (id) {
     const r = robots[id];
     if (!r) return;
-    if (!r.staged) { toast(`${displayName(id)}: 먼저 '목표지정'으로 목표를 찍으세요`, 'err'); return; }
+    if (missionType === 'lane') return startLane(r);
+    if (!r.staged) { toast(`${displayName(id)}: 먼저 'Set Goal' 로 목표를 찍으세요`, 'err'); return; }
+    if (navNeedsStart(r) || r.needInitPose) {          // Nav2 를 켜고 초기 위치를 받은 뒤 자동 출발
+        r.pendingGo = true;
+        if (navNeedsStart(r)) await ensureNav(r);
+        else { toast(`${displayName(id)}: 먼저 Init Pose 를 지정하세요. 지정하면 자동으로 출발합니다`, 'info'); armTool('initpose', id); }
+        return;
+    }
     if (!canStart(r)) { toast(`${displayName(id)}: 대기(IDLE)이고 위치가 확인된 상태에서만 출발합니다`, 'err'); return; }
-    const g = r.staged;
-    if (launchNav(id, g.x, g.y, g.yaw)) { r.staged = null; updateCard(r); refreshStartAll(); }
+    sendStaged(r);
 };
 
 // 전체 주행 시작: 대기 중인 목표를 가진 모든 로봇을 같은 순간에 출발시킨다
-window.startAllStaged = function () {
+window.startAllStaged = async function () {
     const staged = Object.values(robots).filter(r => r.staged);
+    const warm = staged.filter(r => navNeedsStart(r) || r.needInitPose);
+    if (warm.length) {      // Coordinated Fleet Navigation: 모든 로봇의 Nav2·초기 위치가 준비된 뒤 한꺼번에 출발해야 한다
+        for (const r of warm) if (navNeedsStart(r)) await ensureNav(r);
+        toast(`Nav2 준비가 필요한 로봇: ${warm.map(r => displayName(r.id)).join(', ')} — 각 로봇의 Init Pose 를 지정한 뒤 Start All 을 다시 누르세요`, 'info');
+        return;
+    }
     const ready = staged.filter(canStart), skipped = staged.filter(r => !canStart(r));
     if (!ready.length) { toast('출발할 수 있는 대기 목표가 없습니다', 'err'); return; }
     const lines = ready.map(r => `  ${displayName(r.id)} → (${r.staged.x.toFixed(2)}, ${r.staged.y.toFixed(2)})`).join('\n');
@@ -589,7 +874,52 @@ window.startAllStaged = function () {
     refreshStartAll();
 };
 
+// ---- 미션 선택 패널 ----
+const MISSION_DESC = {
+    goal: '고르면 켜진 로봇마다 Nav2 가 켜집니다. ① Init Pose ② Set Goal ③ Go. 교통 관제는 항상 적용됩니다.',
+    fleet: '고르면 켜진 로봇마다 Nav2 가 켜집니다. ① 로봇마다 Init Pose ② Set Goal ③ Start All. 아래에서 교통 관제 방식을 고릅니다 (진행 중인 미션이 없을 때만 바뀝니다).',
+    lane: '고르면 켜진 로봇마다 차선 추종 스택이 켜집니다 (Nav2 대신). ① Init Pose ② Set Goal(차선 위) ③ Go → 목적지까지 갔다가 Go 를 누른 위치로 돌아옵니다. 끝나면 바로 다음 목적지를 지정할 수 있습니다.',
+};
+let missionType = 'goal';
+try { missionType = localStorage.getItem('fms.missionType') || 'goal'; } catch (e) { /* 저장소 없음 */ }
+
+window.setMissionType = function (t) {
+    missionType = MISSION_DESC[t] ? t : 'goal';
+    try { localStorage.setItem('fms.missionType', missionType); } catch (e) { /* 무시 */ }
+    renderMissionPanel();
+    Object.values(robots).forEach(updateCard);          // 미션에 따라 Ready 항목이 바뀐다
+    prepareMission(Object.values(robots));              // 켜진 로봇마다 이 미션의 주행 스택을 켠다 → Init Pose
+};
+
+function renderMissionPanel() {
+    const sel = document.getElementById('mission-type');
+    if (!sel) return;
+    sel.value = missionType;
+    document.getElementById('mission-desc').textContent = MISSION_DESC[missionType];
+    refreshGates();
+    document.getElementById('mission-traffic').classList.toggle('hidden', missionType !== 'fleet');
+    document.getElementById('start-all-row').classList.toggle('hidden', missionType !== 'fleet');
+    const mode = trafficState ? trafficState.mode : null;
+    const avail = trafficState ? trafficState.available : [];
+    document.querySelectorAll('[data-tmode]').forEach(b => {
+        const m = b.dataset.tmode, on = m === mode;
+        b.disabled = !avail.includes(m);
+        b.className = `flex-1 py-1 ${m !== 'encounter' ? 'border-l border-slate-700 ' : ''}${on ? 'bg-cyan-700 text-white' : 'bg-slate-900 text-slate-300 hover:bg-slate-800'} ${b.disabled ? 'opacity-40 cursor-not-allowed' : ''}`;
+    });
+    const msg = document.getElementById('traffic-msg');
+    msg.textContent = !trafficState ? 'Traffic Management 상태를 기다리는 중 (traffic_core 실행 확인)' : (trafficState.msg || `Current: ${mode}`);
+    msg.className = `text-[10px] mt-1 ${trafficState && trafficState.msg ? 'text-amber-400' : 'text-slate-500'}`;
+}
+
+window.setTrafficMode = function (m) {
+    if (!trafficModePub || !rosOnline) { toast('ROS 에 연결되지 않았습니다', 'err'); return; }
+    if (trafficState && trafficState.mode === m) return;
+    trafficModePub.publish(new ROSLIB.Message({ data: m }));
+};
+
 window.cancelMission = function (id) {
+    const r = robots[id];
+    if (r && laneActive(r)) { cancelLane(r); return; }
     if (sendMission('CANCEL', id)) toast(`${displayName(id)} 취소 요청`, 'info');
 };
 
@@ -636,10 +966,54 @@ window.renderLog = function () {
 window.clearRosLog = function () { if (robots[logRobotId]) { robots[logRobotId].logs = []; renderLog(); } };
 
 // ==========================================
-// 8. 카메라 모달 (미구현 - 자리만 유지)
+// 8. 카메라 모달: 실시간 주행 영상
 // ==========================================
-window.openCamModal = function (name) { document.getElementById('cam-robot-name').innerText = name; openModal('cam-modal', 'cam-modal-content'); };
-window.closeCamModal = function () { closeModal('cam-modal', 'cam-modal-content'); };
+// ---- 실시간 주행 영상(/<ns>/camera/rec, JPEG 320×240, 5 Hz): Lane 은 차선 노드, Nav2 미션은 fms_camera_stream 이 낸다 ----
+let camTopic = null, camTimer = null;
+// 카메라 버튼: 별도 창(live.html)에 지도 위 로봇 이동 + 로봇 시점 영상. 팝업이 막히면 아래 모달로 영상만 보여 준다
+window.openLiveView = function (id) {
+    const w = window.open(`live.html?robot=${encodeURIComponent(id)}${mapName() ? '&map=' + encodeURIComponent(mapName()) : ''}`,
+        'pinky-fms-live', 'width=1400,height=820');
+    if (!w) { toast('팝업이 차단되어 영상만 이 창에 띄웁니다 (브라우저에서 이 사이트 팝업 허용)', 'err'); openCamModal(id); return; }
+    w.focus();
+};
+window.openCamModal = function (id) {
+    const r = robots[id];
+    document.getElementById('cam-robot-name').innerText = r ? displayName(id) : id;
+    const img = document.getElementById('cam-img'), ph = document.getElementById('cam-placeholder');
+    const status = document.getElementById('cam-status'), fpsEl = document.getElementById('cam-fps'), liveEl = document.getElementById('cam-live');
+    const liveOff = () => { liveEl.classList.add('hidden'); liveEl.classList.remove('inline-flex'); };
+    liveOff();
+    img.classList.add('hidden'); ph.classList.remove('hidden'); fpsEl.textContent = 'FPS: --';
+    status.textContent = '영상 연결 중…';
+    openModal('cam-modal', 'cam-modal-content');
+    stopCam();
+    if (!ros || !rosOnline || !r) { status.textContent = 'ROS 에 연결되지 않았습니다'; return; }
+    camTopic = new ROSLIB.Topic({ ros, name: `/${r.ns}/camera/rec`, messageType: 'sensor_msgs/msg/CompressedImage', throttle_rate: 150, queue_length: 1 });
+    const times = []; let last = 0;
+    camTopic.subscribe((m) => {
+        last = Date.now(); times.push(last); while (times.length > 10) times.shift();
+        img.src = 'data:image/jpeg;base64,' + m.data;
+        img.classList.remove('hidden'); ph.classList.add('hidden'); status.textContent = '';
+        liveEl.classList.remove('hidden'); liveEl.classList.add('inline-flex');
+        if (times.length > 1) fpsEl.textContent = `FPS: ${((times.length - 1) * 1000 / (times[times.length - 1] - times[0])).toFixed(1)}`;
+    });
+    camTimer = setInterval(() => {                   // 영상이 끊기거나 처음부터 안 오면 이유를 보여 준다
+        if (Date.now() - last < 3000) return;
+        liveOff();
+        img.classList.add('hidden'); ph.classList.remove('hidden'); fpsEl.textContent = 'FPS: --';
+        status.textContent = !r.stack
+            ? '영상은 미션 스택(Nav2 또는 Lane Following)이 켜져 있을 때 나옵니다 — 미션을 선택하세요'
+            : r.stack === 'lane'
+            ? '영상이 오지 않습니다 — 차선 노드가 준비 중이거나 카메라 오류일 수 있습니다 (Log 확인)'
+            : '영상이 오지 않습니다 — 카메라를 여는 중이거나(최대 수 초), 로봇 패키지가 아직 배포되지 않았을 수 있습니다 (OFF→ON)';
+    }, 1000);
+};
+function stopCam() {
+    if (camTopic) { try { camTopic.unsubscribe(); } catch (e) { /* 무시 */ } camTopic = null; }
+    if (camTimer) { clearInterval(camTimer); camTimer = null; }
+}
+window.closeCamModal = function () { stopCam(); closeModal('cam-modal', 'cam-modal-content'); };
 
 // ==========================================
 // 9. 통신 진단 모달: 실제 heartbeat(마지막 수신 후 경과 시간)
@@ -745,9 +1119,7 @@ document.getElementById('btn-estop')?.addEventListener('click', () => {
     globalCmdPub.publish(new ROSLIB.Message({ data: 'E_STOP' }));
     toast('GLOBAL E-STOP: 모든 로봇의 진행 중인 주행을 취소했습니다', 'err');
 });
-document.getElementById('btn-return')?.addEventListener('click', () => {
-    toast('RETURN DOCK 은 아직 구현되지 않았습니다 (도크 위치/미션 정의 필요)', 'info');
-});
+// RETURN DOCK (전체·로봇별) 과 REC(주행 기록) 은 extras.js
 
 // ==========================================
 // 12. 맵 뷰: 맵 표시 + 로봇 위치 + 클릭(드래그: 방향)으로 목표 지정
@@ -787,7 +1159,11 @@ function armTool(type, id) {
     if (type === 'initpose' && rosOnline && robots[id]) initPoseTopic(id);     // 맵을 클릭하기 전에 미리 연결
     setMapTool({ type, robotId: id });
 }
-window.startInitialPose = (id) => armTool('initpose', id);
+window.startInitialPose = async (id) => {
+    const r = robots[id];
+    if (r && stackNeedsStart(r)) await prepareMission([r]);     // 고른 미션의 스택이 꺼져 있으면 켜고 Init Pose 도구를 연다
+    else armTool('initpose', id);
+};
 window.startGoalTool = (id) => armTool('goal', id);
 window.startAutoTool = () => armTool('auto', '');
 window.cancelMapTool = () => setMapTool(null);
@@ -875,8 +1251,24 @@ function publishInitialPose(robotId, x, y, yaw) {
         pose: { pose: { position: { x, y, z: 0 }, orientation: { x: 0, y: 0, z: Math.sin(yaw / 2), w: Math.cos(yaw / 2) } }, covariance: cov },
     });
     const t = initPoseTopic(robotId);
-    t.publish(msg());
-    setTimeout(() => { if (rosOnline) t.publish(msg()); }, 1000);     // 같은 위치를 한 번 더 (AMCL 은 같은 초기위치를 다시 받아도 문제없다)
+    const r = robots[robotId];
+    const wait = r && r.navStartedAt ? Math.max(0, r.navStartedAt + NAV_WARMUP_MS - Date.now()) : 0;   // Nav2 를 막 켰으면 AMCL 이 뜰 때까지
+    const send = () => {
+        if (!rosOnline) return;
+        t.publish(msg());
+        setTimeout(() => { if (rosOnline) t.publish(msg()); }, 1000);     // 같은 위치를 한 번 더 (AMCL 은 같은 초기위치를 다시 받아도 문제없다)
+        if (!r) return;
+        r.needInitPose = false;
+        updateCard(r);
+        if (r.pendingGo && r.staged) {                  // Go 를 눌러 둔 상태: 초기 위치가 반영되면 자동 출발
+            r.pendingGo = false;
+            setTimeout(() => { if (r.staged && canStart(r)) sendStaged(r); }, 2500);
+        }
+    };
+    if (wait > 0) {
+        toast(`${displayName(robotId)} Nav2 가 켜지는 중: ${(wait / 1000).toFixed(0)}초 뒤 초기 위치를 보냅니다`, 'info');
+        setTimeout(send, wait);
+    } else send();
     toast(`${displayName(robotId)} 초기 위치 지정 (${x.toFixed(2)}, ${y.toFixed(2)})`, 'info');
 }
 
@@ -1004,7 +1396,7 @@ function buildMapBitmap(w, h, gray, meta) {
     return off;
 }
 
-async function selectMap(name) {
+async function loadMapByName(name, userPick) {
     if (!name) return;
     try {
         const meta = await api('GET', `/maps/${name}`);
@@ -1031,7 +1423,9 @@ async function selectMap(name) {
         mapState.bmp = buildMapBitmap(w, h, gray, meta);
         document.getElementById('map-empty').classList.add('hidden');
         document.getElementById('map-select').value = name;
+        try { localStorage.setItem('fms.map', name); } catch (e) { /* 무시 */ }
         requestMapDraw();
+        if (userPick) prepareMission(Object.values(robots), true);     // 로봇 스택도 이 지도로 (다르면 다시 띄움 → Init Pose 다시)
     } catch (e) { toast(`맵을 불러오지 못했습니다: ${e.message}`, 'err'); }
 }
 
@@ -1040,12 +1434,15 @@ async function loadMaps() {
         const list = await api('GET', '/maps');
         const sel = document.getElementById('map-select');
         sel.innerHTML = list.map(m => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('');
-        if (list.length && !mapState.meta) await selectMap(list[0].name);
+        let saved = null;
+        try { saved = localStorage.getItem('fms.map'); } catch (e) { /* 저장소 없음 */ }
+        if (list.length && !mapState.meta) await loadMapByName(list.some(m => m.name === saved) ? saved : list[0].name);
         return true;
     } catch (e) { return false; }
 }
 
-window.selectMap = selectMap;
+// selectMap 은 index.html 의 onchange 가 부른다. 함수 선언과 같은 이름이면 window.selectMap 대입이 그 선언을 덮어써 자기 자신을 부르게 된다
+window.selectMap = (name) => loadMapByName(name, true);      // 화면에서 고른 경우
 window.uploadMap = async function (input) {
     const files = [...input.files];
     input.value = '';
@@ -1059,7 +1456,7 @@ window.uploadMap = async function (input) {
         if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
         toast(`맵 업로드 완료: ${data.name}`, 'ok');
         await loadMaps();
-        await selectMap(data.name);
+        await loadMapByName(data.name, true);
     } catch (e) { toast(`업로드 실패: ${e.message}`, 'err'); }
 };
 
@@ -1236,6 +1633,7 @@ async function init() {
     try { netInfo = await api('GET', '/network'); } catch (e) { /* 백엔드가 늦게 뜨면 기본값 유지 */ }
     try { cfgInfo = await api('GET', '/config'); } catch (e) { /* 기본값 유지 */ }
     if (!await loadRobots()) toast('백엔드에 연결할 수 없습니다. 연결되면 자동으로 로봇 목록을 불러옵니다.', 'err');
+    renderMissionPanel();
     loadMaps();
     pollProcStatus();
     setInterval(pollProcStatus, 2000);

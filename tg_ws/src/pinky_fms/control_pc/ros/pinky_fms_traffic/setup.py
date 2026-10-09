@@ -21,6 +21,8 @@ setup(
         'console_scripts': [
             'fleet_traffic = pinky_fms_traffic.fleet_traffic:main',
             'traffic_mock_robot = pinky_fms_traffic.traffic_mock_robot:main',
+            'lane_traffic = pinky_fms_traffic.lane_traffic:main',
+            'lane_mock_robot = pinky_fms_traffic.lane_mock_robot:main',
         ],
     },
 )

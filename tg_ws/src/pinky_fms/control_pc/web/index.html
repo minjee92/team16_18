@@ -100,14 +100,43 @@
                     <button id="btn-return" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5">
                         <i class="fa-solid fa-charging-station"></i> RETURN DOCK
                     </button>
+                    <button id="btn-rec" class="flex-1 bg-slate-700 hover:bg-slate-600 border border-slate-700 text-white py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-circle-dot"></i> REC LOG
+                    </button>
                 </div>
 
-                <!-- 대기 중인 목표를 한꺼번에 출발 -->
-                <div class="px-4 pt-2 flex gap-2">
-                    <button id="btn-start-all" onclick="startAllStaged()" disabled class="flex-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5" title="맵에서 로봇을 골라 목표를 찍어 두면(대기), 한꺼번에 출발합니다">
-                        <i class="fa-solid fa-play"></i> 전체 주행 시작 <span id="start-all-count">(0)</span>
+                <!-- 미션 선택: 미션 종류와 그 설정 (교통 관제 방식은 조정 층 설정) -->
+                <div class="px-4 pt-3">
+                    <div class="bg-slate-800/60 border border-slate-700 rounded-lg p-2.5">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase"><i class="fa-solid fa-route mr-1"></i>Mission</span>
+                            <select id="mission-type" onchange="setMissionType(this.value)" class="flex-1 bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1">
+                                <option value="goal">Goal Navigation</option>
+                                <option value="fleet">Coordinated Fleet Navigation</option>
+                                <option value="lane">Vision-based Lane Following</option>
+                            </select>
+                        </div>
+                        <p id="mission-desc" class="text-[10px] text-slate-400 mt-1.5 leading-relaxed"></p>
+                        <div id="mission-traffic" class="hidden mt-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-slate-400 whitespace-nowrap">Traffic Management</span>
+                                <div class="flex flex-1 rounded overflow-hidden border border-slate-700 text-[10px] font-bold">
+                                    <button data-tmode="encounter" onclick="setTrafficMode('encounter')" class="flex-1 py-1 bg-slate-900 text-slate-300" title="두 로봇이 실제로 마주쳤을 때만 멈추고 우선권·양보를 정합니다">Encounter</button>
+                                    <button data-tmode="predict" onclick="setTrafficMode('predict')" class="flex-1 py-1 bg-slate-900 text-slate-300 border-l border-slate-700" title="경로와 도착 시각을 예측해 미리 대기·양보합니다 (이전 방식)">Predictive</button>
+                                    <button data-tmode="off" onclick="setTrafficMode('off')" class="flex-1 py-1 bg-slate-900 text-slate-300 border-l border-slate-700" title="교통 관제 없이 목표만 전달합니다 (시험용)">Off</button>
+                                </div>
+                            </div>
+                            <p id="traffic-msg" class="text-[10px] text-slate-500 mt-1"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 대기 중인 목표를 한꺼번에 출발 (Coordinated Fleet Navigation) -->
+                <div id="start-all-row" class="px-4 pt-2 flex gap-2">
+                    <button id="btn-start-all" onclick="startAllStaged()" disabled class="flex-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5" title="Coordinated Fleet Navigation: 목표를 찍어 둔 로봇들을 한꺼번에 출발시킵니다 (교통 관제 적용)">
+                        <i class="fa-solid fa-play"></i> Start All <span id="start-all-count">(0)</span>
                     </button>
-                    <button id="btn-clear-staged" onclick="clearAllStaged()" disabled class="bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 px-3 py-2 rounded-lg font-bold text-xs transition-all" title="대기 중인 목표를 모두 지움">목표 해제</button>
+                    <button id="btn-clear-staged" onclick="clearAllStaged()" disabled class="bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 px-3 py-2 rounded-lg font-bold text-xs transition-all" title="대기 중인 목표를 모두 지움">Clear Goals</button>
                 </div>
 
                 <!-- 빈 바구니: 자바스크립트가 로봇 리스트를 자동으로 채워넣습니다 -->
@@ -145,22 +174,22 @@
 
     <!-- 🟢 [모달 2] 라이브 카메라 팝업 -->
     <div id="cam-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
-        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[800px] overflow-hidden transform scale-95 transition-transform duration-300" id="cam-modal-content">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[800px] max-w-[95vw] overflow-hidden transform scale-95 transition-transform duration-300" id="cam-modal-content">
             <div class="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-850">
                 <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-video text-rose-500 mr-2 animate-pulse"></i>Live FPV Stream: <span id="cam-robot-name">AMR-01</span></h2>
                 <button onclick="closeCamModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
             <div class="p-1 bg-black relative h-[450px] flex items-center justify-center">
                 <div class="absolute top-4 left-4 flex flex-col gap-1 z-10">
-                    <span class="bg-black/60 text-emerald-400 text-[10px] font-mono px-2 py-0.5 rounded">FPS: 30.0</span>
+                    <span id="cam-fps" class="bg-black/60 text-emerald-400 text-[10px] font-mono px-2 py-0.5 rounded">FPS: --</span>
                 </div>
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
-                    <div class="w-px h-full bg-cyan-500"></div><div class="h-px w-full bg-cyan-500 absolute"></div>
-                    <div class="w-12 h-12 border-2 border-cyan-500 rounded-full absolute"></div>
-                </div>
-                <i class="fa-solid fa-warehouse text-[8rem] text-slate-800"></i>
-                <p class="absolute bottom-4 text-slate-600 text-xs font-mono tracking-widest">Waiting for ImageTransport...</p>
+                <span id="cam-live" class="hidden absolute top-4 right-4 z-10 items-center gap-1.5 bg-red-600 text-white text-[10px] font-bold tracking-widest px-2 py-0.5 rounded" title="실시간 영상 수신 중"><span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>LIVE</span>
+                <img id="cam-img" alt="로봇 카메라 영상" class="hidden max-h-full max-w-full object-contain" style="image-rendering:auto">
+                <i id="cam-placeholder" class="fa-solid fa-video-slash text-[6rem] text-slate-800"></i>
+                <p id="cam-status" class="absolute bottom-4 px-4 text-center text-slate-500 text-xs">영상 연결 중…</p>
             </div>
+        </div>
+    </div>
         </div>
     </div>
 
@@ -323,8 +352,9 @@
         <p class="text-slate-500 mt-2">선택한 로봇의 목표로만 지정됩니다. 가까운 로봇이 자동으로 가지 않습니다.</p>
     </div>
 
-    <div id="toast-area" class="fixed bottom-4 right-4 z-[60] space-y-2 pointer-events-none"></div>
+    <div id="toast-area" class="fixed top-2 left-[calc(50%+2rem)] -translate-x-1/2 z-[60] flex flex-col items-center gap-1.5 pointer-events-none w-max max-w-[min(42rem,calc(100vw-6rem))]"></div>   <!-- 안내 알림: 헤더(제목 줄) 가운데. 로봇 카드를 가리지 않게 -->
 
     <script src="app.js"></script>
+    <script src="extras.js"></script>
 </body>
 </html>

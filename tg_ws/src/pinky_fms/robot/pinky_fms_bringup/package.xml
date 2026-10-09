@@ -18,6 +18,11 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>pinky_emotion</exec_depend>
+  <exec_depend>pinky_interfaces</exec_depend>
+  <exec_depend>pinky_lamp_control</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

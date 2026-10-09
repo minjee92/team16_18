@@ -15,6 +15,7 @@
     <arg name="params_file" default="$(find-pkg-share pinky_fms_bringup)/params/nav2_params.yaml"/>
     <arg name="use_sim_time" default="False"/>
     <arg name="frame_prefix" default=""/>   <!-- 시뮬레이션: TF 프레임 접두어 (예: amr_01/). 실물은 비움 -->
+    <arg name="camera" default="true"/>     <!-- 주행 영상(camera/rec). 시뮬은 카메라가 없어 경고만 남김 -->
 
     <include file="$(find-pkg-share pinky_fms_bringup)/launch/nav2_namespaced.launch.py">
         <arg name="namespace" value="$(var namespace)"/>
@@ -31,4 +32,14 @@
         <remap from="/tf_static" to="tf_static"/>
         <param name="use_sim_time" value="$(var use_sim_time)"/>
     </node>
+
+    <!-- 벽에서 빠져나오기: Nav2 복구(BackUp 등)는 이미 벽에 붙으면 충돌 검사로 실패하므로, 라이다를 직접 보며 벽 반대로 조금 이동한다.
+         관제(fleet_traffic)가 Nav2 목표를 취소한 뒤 escape_cmd 로 요청할 때만 움직인다 -->
+    <node pkg="pinky_fms_bringup" exec="fms_escape.py" name="fms_escape" namespace="$(var namespace)" output="screen">
+        <remap from="/tf" to="tf"/>
+        <remap from="/tf_static" to="tf_static"/>
+    </node>
+
+    <!-- 주행 영상(camera/rec): 관제 GUI 카메라 버튼·REC LOG 용. 구독자가 있을 때만 카메라를 연다 (차선 주행 중에는 차선 노드가 같은 토픽을 냄) -->
+    <node pkg="pinky_fms_bringup" exec="fms_camera_stream.py" name="fms_camera_stream" namespace="$(var namespace)" output="screen" if="$(var camera)"/>
 </launch>

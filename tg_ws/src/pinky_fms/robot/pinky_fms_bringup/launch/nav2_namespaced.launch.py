@@ -93,7 +93,7 @@ def launch_setup(context):
 
     nav_share = get_package_share_directory('pinky_navigation')
     bringup = IncludeLaunchDescription(
-        AnyLaunchDescriptionSource(os.path.join(nav_share, 'launch', 'bringup_launch.xml')),
+        AnyLaunchDescriptionSource(os.path.join(nav_share, 'launch', LaunchConfiguration('nav_launch').perform(context))),
         launch_arguments={
             'namespace': '',                       # namespace 는 아래 PushRosNamespace 가 한 번만 적용한다
             'map': LaunchConfiguration('map').perform(context),
@@ -116,5 +116,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_composition', default_value='False'),
         DeclareLaunchArgument('use_sim_time', default_value='False'),
         DeclareLaunchArgument('frame_prefix', default_value='', description="시뮬레이션처럼 TF 프레임에 접두어가 붙을 때 (예: 'amr_01/')"),
+        DeclareLaunchArgument('nav_launch', default_value='bringup_launch.xml',
+                              description="pinky_navigation 의 launch: bringup_launch.xml(Nav2 전체) / localization_launch.xml(map_server+AMCL 만, 차선 추종용)"),
         OpaqueFunction(function=launch_setup),
     ])
