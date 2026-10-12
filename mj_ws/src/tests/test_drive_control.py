@@ -6,7 +6,7 @@
 """
 
 import testlib
-from drive_control import FrontStop, LaneFollowController
+from mj_lane_core.drive_control import FrontStop, LaneFollowController
 
 T = testlib.Checker('drive_control')
 

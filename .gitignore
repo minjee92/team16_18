@@ -256,6 +256,11 @@ mj_ws/outputs/*
 # mj_ws 임시 파일 (통째로 제외)
 mj_ws/tmp/
 
+# mj_ws colcon 빌드 결과 (패키지: mj_ws/src/mj_*)
+mj_ws/build/
+mj_ws/install/
+mj_ws/log/
+
 # 모델 관련 폴더
 old_pt/
 lane_model_ncnn/

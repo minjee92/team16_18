@@ -38,8 +38,8 @@ testlib.require(testlib.VIDEO, '입력 영상')
 NODE = str(testlib.SRC_DIR / 'robot' / 'step2_lane_follow.py')
 INJECT = (                                                   # 30번째 추론 결과 처리에서 예외
     'import sys; sys.argv = sys.argv[1:]; '
-    f'sys.path.insert(0, {str(testlib.SRC_DIR / "robot")!r}); '
-    'import step2_lane_follow as S2; orig = S2.build_masks; calls = [0]\n'
+    f'sys.path[:0] = [{str(testlib.SRC_DIR / "mj_lane_core")!r}, {str(testlib.SRC_DIR / "mj_lane_drive")!r}]; '
+    'import mj_lane_drive.lane_follow_node as S2; orig = S2.build_masks; calls = [0]\n'
     'def boom(*a, **k):\n'
     '    calls[0] += 1\n'
     '    if calls[0] == 30:\n'

@@ -20,10 +20,10 @@ T = testlib.Checker('step2_replay')
 testlib.require(testlib.NCNN_MODEL, 'ncnn 모델')
 testlib.require(testlib.VIDEO, '입력 영상')
 
-import step2_lane_follow as S2                                   # noqa: E402
+import mj_lane_drive.lane_follow_node as S2                   # noqa: E402
 from ultralytics import YOLO                                     # noqa: E402
-from common.lane_postprocess import LaneTracker, pick_main       # noqa: E402
-from drive_control import LaneFollowController                   # noqa: E402
+from mj_lane_core.lane_postprocess import LaneTracker, pick_main  # noqa: E402
+from mj_lane_core.drive_control import LaneFollowController      # noqa: E402
 
 EXPECTED = {
     'tiers': {'FOLLOW': 1365, 'LOST': 32, 'SLOW': 43, 'STOP': 29},

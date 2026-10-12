@@ -7,11 +7,12 @@
 
 | 경로 | 내용 | git |
 |---|---|---|
-| `src/common/` | 모델(.pt / ncnn)과 무관한 공통 모듈. `lane_postprocess.py`: 마스크 → 차선 중앙점·조향 계산, `lane_draw.py`: 추적 결과 그리기 (step1 결과 영상·step2 주행 기록 공용) | 추적 |
+| `src/mj_lane_core/` | **ROS 패키지.** 판단만 (ROS·하드웨어 없음). `lane_postprocess.py`: 마스크 → 차선 중앙점·조향, `drive_control.py`: 초음파 비상 정지·속도, `lane_draw.py`: 추적 결과 그리기 | 추적 |
+| `src/mj_lane_drive/` | **ROS 패키지.** 시뮬·실물 공용 주행 노드 `lane_follow_node.py` (step2), 입력원 `sources.py`, 주행 기록 `drive_record.py` | 추적 |
 | `src/tools/` | 개발용 (PC). `step1_check_lane_detection.py`: 저장 영상으로 차선 인식·조향 검증 | 추적 |
-| `src/robot/` | 로봇에서 실행. `step2_lane_follow.py`(2단계 차선 주행 노드), `drive_control.py`(ROS 무관 판단 로직: 초음파 비상 정지·속도), `lane_mission_drive.py`(4단계 기반 미션 주행), `model_ncnn.py`(ncnn 로드 테스트) | 추적 |
+| `src/robot/` | `step2_lane_follow.py`: 옛 실행 경로 (빌드 없이 `mj_lane_drive` 노드를 실행), `lane_mission_drive.py`(4단계 기반 미션 주행, 나중에 정리) | 추적 |
 | `src/station/` | 관제 PC에서 실행. `mission_gui.py`(맵에서 목표 지점 지정) | 추적 |
-| `src/legacy/` | 더 이상 쓰지 않는 스크립트 (`1_realtime.py`, `2_realtime.py`, `capture.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`) | 추적 |
+| `src/legacy/` | 더 이상 쓰지 않는 스크립트 (`1_realtime.py`, `2_realtime.py`, `capture.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`, `model_ncnn.py`) | 추적 |
 | `maps/` | SLAM 맵 (`mission4_3.pgm`, `mission4_3.yaml`) | 추적 |
 | `models/` | 모델 가중치와 `metadata.yaml`만 (코드 두지 말 것) | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
 | `inputs/` | 입력 영상 `pinky_*.mp4` | 폴더만 추적 (`.gitkeep`), 내용물 제외 |
@@ -19,11 +20,14 @@
 | `tmp/` | 쓰지 않는 파일 (초기 학습용 캡처 jpg, 중복 영상), `capture.py`가 저장하는 곳 | 통째로 제외 |
 | `tmp/legacy_models/` | legacy 가중치 (`best.pt`, `lane_best.pt`, `260921_best.pt`, `old_pt/`) | 제외 |
 | `dataset` | 데이터셋 심볼릭 링크 (아래 참고) | 제외 |
+| `build/` `install/` `log/` | colcon 빌드 결과 | 제외 |
 
-- 스크립트는 모두 `src/<역할>/` 아래에 있고, `BASE_DIR = Path(__file__).resolve().parent.parent.parent`
-  (= `mj_ws/`)를 기준으로 경로를 잡으므로 어느 디렉터리에서 실행해도 된다.
-- `common` 모듈을 쓰는 스크립트는 상단에서 `src/`를 `sys.path`에 넣은 뒤 import한다
-  (`src/tools/step1_check_lane_detection.py` 참고). 실행은 `python3 src/tools/step1_check_lane_detection.py`처럼 경로로 한다.
+- **mj_ws 는 colcon 작업공간이다.** 패키지는 `src/mj_*/` 에만 있고 의존 방향은 `core ← drive ← sim/real` 로만 간다.
+  `package.xml` 이 없는 `src/tools`·`src/tests`·`src/legacy`·`src/station` 은 colcon 이 무시한다.
+  빌드: `cd mj_ws && colcon build --base-paths src --symlink-install` (`~/pinky/install` 위, tg_ws 는 source 하지 않음)
+- **빌드 없이도 실행된다.** 스크립트·시험은 `src/mj_lane_core`, `src/mj_lane_drive` 를 `sys.path` 에 넣고 import 한다
+  (`src/robot/step2_lane_follow.py`, `src/tools/step1_check_lane_detection.py`, `src/tests/testlib.py`).
+- 경로는 `mj_ws/` 를 기준으로 잡는다. 주행 노드는 파일 위치에서 계산하고, 복사 설치했을 때는 환경 변수 `MJ_WS` 로 알려 준다.
 - 입력 영상은 `inputs/`에서 읽고, 결과물은 `outputs/`에 저장한다.
 - 모델·영상은 git에 올라가지 않으므로 팀원은 각자 `models/`, `inputs/`에 넣어야 한다.
 
@@ -31,7 +35,7 @@
 
 | 경로 | 용도 | 쓰는 스크립트 |
 |---|---|---|
-| `models/lane_model_ncnn/best_ncnn_model/` | 로봇 실주행용 (NCNN, 320×320) | `robot/lane_mission_drive.py`, `robot/model_ncnn.py` |
+| `models/lane_model_ncnn/best_ncnn_model/` | 로봇 실주행용 (NCNN, 320×320) | `mj_lane_drive` 주행 노드 (`robot/step2_lane_follow.py`), `robot/lane_mission_drive.py`, `legacy/model_ncnn.py` |
 | `models/260928_yolon_best.pt` | 저장 영상 검증용 (PC) | `tools/step1_check_lane_detection.py` (legacy의 `2_realtime.py`, `find_target_point.py`, `find_target_point_dual.py`, `test_seg.py`도 이 모델을 가리킴) |
 | `tmp/legacy_models/*` | legacy (사용 안 함) | `legacy/1_realtime.py` (`old_pt/pouch_best.pt`) |
 
@@ -111,7 +115,7 @@ def to_wheel_rpm(v, omega):
   대응표를 만들 것. 틸트각을 따로 재는 대신 이걸로 역산한다.
   (차선을 읽는 샘플 행 y=432/384/336/288(640×480 기준)이 바닥 몇 cm인지도 이 표로 확인한다)
 - **로봇 중심선의 이미지상 x좌표** — 현재 코드는 화면 중앙(x=320)을 로봇 중심선으로 가정한다
-  (`src/common/lane_postprocess.py`의 `error` 계산)
+  (`src/mj_lane_core/mj_lane_core/lane_postprocess.py`의 `error` 계산)
 - **바퀴 지름** — bringup 값(54mm)을 채택했다. PLAN.md "2단계 테스트 항목"의 직진 검증으로 확인한다
 
 ## 데이터셋

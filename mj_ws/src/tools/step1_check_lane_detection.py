@@ -10,7 +10,7 @@
   - 조향값(error, angular)을 화면과 터미널에 표시
   - 프레임별 클래스 검출/신뢰도와 마지막 검출률 요약을 터미널에 출력
 
-후처리(목표점·조향 계산)는 모델과 무관한 common/lane_postprocess.py에 있다.
+후처리(목표점·조향 계산)는 모델과 무관한 mj_lane_core/lane_postprocess.py 에 있다.
 
 실행:
     python3 src/tools/step1_check_lane_detection.py
@@ -31,11 +31,11 @@ from ultralytics import YOLO
 import torch   # ultralytics 뒤에 import (ultralytics가 torch 로드 전 OMP 설정을 먼저 잡음)
 
 SRC_DIR = Path(__file__).resolve().parent.parent     # mj_ws/src/
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))                 # src/common 을 import 하기 위해
+if str(SRC_DIR / 'mj_lane_core') not in sys.path:
+    sys.path.insert(0, str(SRC_DIR / 'mj_lane_core'))   # 빌드 없이 mj_lane_core 를 import
 
-from common.lane_draw import draw_tracking  # noqa: E402
-from common.lane_postprocess import LaneTracker, group_masks, pick_main  # noqa: E402
+from mj_lane_core.lane_draw import draw_tracking  # noqa: E402
+from mj_lane_core.lane_postprocess import LaneTracker, group_masks, pick_main  # noqa: E402
 
 
 # ----------------------------- 설정 -----------------------------

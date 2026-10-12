@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 import testlib
-from common.lane_postprocess import LaneTracker, group_masks, pick_main
+from mj_lane_core.lane_postprocess import LaneTracker, group_masks, pick_main
 
 T = testlib.Checker('tracker_parity')
 testlib.require(testlib.NCNN_MODEL, 'ncnn 모델')

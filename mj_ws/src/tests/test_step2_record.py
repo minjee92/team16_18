@@ -39,7 +39,7 @@ from rclpy.executors import SingleThreadedExecutor  # noqa: E402
 from rclpy.node import Node                         # noqa: E402
 from sensor_msgs.msg import Range                   # noqa: E402
 
-import step2_lane_follow as S2                      # noqa: E402  (상수 비교용)
+import mj_lane_drive.lane_follow_node as S2                      # noqa: E402  (상수 비교용)
 
 
 class FakeSonar(Node):

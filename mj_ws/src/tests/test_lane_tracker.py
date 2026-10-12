@@ -9,7 +9,7 @@
 import numpy as np
 
 import testlib
-from common.lane_postprocess import LaneTracker
+from mj_lane_core.lane_postprocess import LaneTracker
 
 T = testlib.Checker('lane_tracker')
 

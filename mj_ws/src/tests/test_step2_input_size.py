@@ -24,7 +24,7 @@ testlib.require(testlib.NCNN_MODEL, 'ncnn 모델')
 testlib.require(testlib.VIDEO, '입력 영상')
 PT_MODEL = testlib.MJ_DIR / 'models' / '260928_yolon_best.pt'
 
-import step2_lane_follow as S2      # noqa: E402
+import mj_lane_drive.lane_follow_node as S2      # noqa: E402
 from ultralytics import YOLO        # noqa: E402
 
 ok, message = S2.verify_input_size(YOLO(str(testlib.NCNN_MODEL), task='segment'), 320)
@@ -45,8 +45,8 @@ else:
 # 실제 노드: INFER_SIZE 만 640 으로 바꿔 main() 실행
 runner = (
     'import sys; sys.argv = ["step2_lane_follow.py", "--video", sys.argv[1]]; '
-    f'sys.path.insert(0, {str(testlib.SRC_DIR / "robot")!r}); '
-    'import step2_lane_follow as S2; S2.INFER_SIZE = 640; sys.exit(S2.main())'
+    f'sys.path[:0] = [{str(testlib.SRC_DIR / "mj_lane_core")!r}, {str(testlib.SRC_DIR / "mj_lane_drive")!r}]; '
+    'import mj_lane_drive.lane_follow_node as S2; S2.INFER_SIZE = 640; sys.exit(S2.main())'
 )
 proc = subprocess.run([sys.executable, '-c', runner, str(testlib.VIDEO)], stdin=subprocess.DEVNULL,
                       capture_output=True, text=True, timeout=120, cwd=str(testlib.MJ_DIR))

@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>mj_lane_core</name>
+  <version>0.1.0</version>
+  <description>차선 후처리·조향·비상 정지 판정 (ROS·하드웨어 없음)</description>
+  <maintainer email="lmj0421@infobank.net">minjee92</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

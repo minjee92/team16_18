@@ -11,7 +11,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 SRC_DIR = TESTS_DIR.parent
 MJ_DIR = SRC_DIR.parent
 
-for path in (SRC_DIR, SRC_DIR / 'robot', SRC_DIR / 'tools'):
+for path in (SRC_DIR / 'mj_lane_core', SRC_DIR / 'mj_lane_drive', SRC_DIR / 'robot', SRC_DIR / 'tools'):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

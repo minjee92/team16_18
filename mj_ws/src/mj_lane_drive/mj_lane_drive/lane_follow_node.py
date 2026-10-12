@@ -2,7 +2,7 @@
 """
 2단계: 차선 가운데로 주행 (로봇)
 
-카메라 → ncnn 차선 세그멘테이션 → 공통 후처리(common/lane_postprocess.py) → cmd_vel
+카메라 → ncnn 차선 세그멘테이션 → 공통 후처리(mj_lane_core) → cmd_vel
 
   - 차선을 못 보면 시간 기준 단계적 대응 (0.5초 감속 / 2.0초 정지)
   - 전방 초음파 비상 정지: 차선 검출과 무관하게 전방이 가까우면 즉시 정지 (fail-safe, 수동 재개)
@@ -32,9 +32,7 @@ PC 테스트: --video 로 카메라 대신 저장 영상을 넣는다 (ROS 환�
 """
 
 import argparse
-import csv
 import os
-import queue
 import select
 import signal
 import sys
@@ -42,7 +40,6 @@ import termios
 import threading
 import time
 import tty
-from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -55,18 +52,17 @@ from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Range
 
-SRC_DIR = Path(__file__).resolve().parent.parent     # mj_ws/src/
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))                 # src/common 을 import 하기 위해
-
-from common.lane_draw import draw_debug, draw_tracking                     # noqa: E402
-from common.lane_postprocess import LaneTracker, group_masks, pick_main  # noqa: E402
-from drive_control import FrontStop, LaneFollowController                # noqa: E402
+from mj_lane_core.drive_control import FrontStop, LaneFollowController
+from mj_lane_core.lane_postprocess import LaneTracker, group_masks, pick_main
+from mj_lane_drive.drive_record import (REPORT_CLASSES, DriveLog, Recorder, _fmt, class_confs,
+                                        output_paths)
+from mj_lane_drive.sources import PiCameraSource, VideoSource
 
 
 # ============================== 설정 ==============================
 
-BASE_DIR = SRC_DIR.parent   # mj_ws/
+# mj_ws/ (이 파일: mj_ws/src/mj_lane_drive/mj_lane_drive/). colcon 으로 복사 설치했을 때는 MJ_WS 로 알려 준다
+BASE_DIR = Path(os.environ.get('MJ_WS', Path(__file__).resolve().parents[3]))
 
 MODEL_PATH = str(BASE_DIR / 'models' / 'lane_model_ncnn' / 'best_ncnn_model')   # 폴더명에 _ncnn_model 필수
 INFER_SIZE = 320
@@ -77,8 +73,6 @@ LOG_EVERY = 10                   # 이 스텝마다 터미널에 상태 한 줄 
 
 # --- 주행 기록 ---
 OUTPUT_DIR = BASE_DIR / 'outputs'
-LOG_FLUSH_EVERY = 10             # CSV 를 이 줄마다 디스크에 씀 (중간에 죽어도 남게)
-RECORD_QUEUE = 20                # 녹화 대기 프레임 상한. 넘치면 그 프레임은 버린다 (제어 루프 보호)
 
 # --- 카메라 전처리 (학습 데이터와 동일하게, lane_mission_drive.py 와 같은 값) ---
 ROTATE_180 = True
@@ -165,55 +159,6 @@ class KeyInput:
         return keys
 
 
-class PiCameraSource:
-    """로봇 카메라 (Picamera2)."""
-
-    def __init__(self, size):
-        from picamera2 import Picamera2
-        self.camera = Picamera2()
-        self.camera.configure(self.camera.create_video_configuration(
-            main={'size': size, 'format': 'RGB888'}))
-        self.camera.start()
-        time.sleep(1.0)
-
-    def read(self):
-        frame = self.camera.capture_array()
-        if ROTATE_180:
-            frame = cv2.rotate(frame, cv2.ROTATE_180)
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        if SWAP_RB:
-            frame = frame[:, :, ::-1].copy()
-        if MIRROR_INPUT:
-            frame = cv2.flip(frame, 1)
-        return frame
-
-    def close(self):
-        try:
-            self.camera.stop()
-            self.camera.close()
-        except Exception:
-            pass
-
-
-class VideoSource:
-    """PC 테스트용: 저장 영상 (이미 모델 입력 방향이므로 전처리 없음)."""
-
-    def __init__(self, path, size):
-        self.cap = cv2.VideoCapture(path)
-        if not self.cap.isOpened():
-            raise RuntimeError(f'영상을 열 수 없습니다: {path}')
-        self.size = size
-
-    def read(self):
-        ok, frame = self.cap.read()
-        if not ok:
-            return None
-        return cv2.resize(frame, self.size)
-
-    def close(self):
-        self.cap.release()
-
-
 def verify_input_size(model, expected):
     """
     워밍업 추론을 한 번 하고, 모델이 실제로 쓰는 입력 크기가 expected 와 같은지 확인한다.
@@ -235,7 +180,7 @@ def verify_input_size(model, expected):
 
 
 def build_masks(result, width, height):
-    """ultralytics Results → 클래스 이름별 원본 크기 마스크 (후처리는 common 모듈)."""
+    """ultralytics Results → 클래스 이름별 원본 크기 마스크 (후처리는 mj_lane_core)."""
     if result.masks is None or result.boxes is None:
         return {}
     names = result.names
@@ -243,134 +188,6 @@ def build_masks(result, width, height):
     classes = result.boxes.cls.cpu().numpy().astype(int)
     confs = result.boxes.conf.cpu().numpy()
     return group_masks(data, [names[c] for c in classes], confs, width, height)
-
-
-# =========================== 주행 기록 ===========================
-
-REPORT_CLASSES = (('left_lane', 'L'), ('right_lane', 'R'), ('crosswalk', 'CW'), ('cross_lane', 'CL'))
-
-
-def output_paths(out_dir):
-    """실행 시각을 붙인 CSV/영상 경로 (같은 이름, 확장자만 다름). 같은 초에 다시 실행하면 _1, _2 …"""
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stem = f'result_step2_lane_follow_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-    name, n = stem, 1
-    while (out_dir / f'{name}.csv').exists() or (out_dir / f'{name}.mp4').exists():
-        name, n = f'{stem}_{n}', n + 1
-    return out_dir / f'{name}.csv', out_dir / f'{name}.mp4'
-
-
-def class_confs(masks):
-    """클래스별 최고 conf (검출이 없으면 None)."""
-    return {name: max((d['conf'] for d in masks[name]), default=None) if masks.get(name) else None
-            for name, _ in REPORT_CLASSES}
-
-
-def _fmt(value, digits):
-    return '' if value is None else f'{value:.{digits}f}'
-
-
-class DriveLog:
-    """프레임(제어 스텝)별 주행 로그 CSV. 값이 없으면 빈칸."""
-
-    def __init__(self, path, sample_rows):
-        self.path = path
-        self.tags = [f'{round(r * 100)}' for r in sample_rows]          # '90', '80', '70', '60'
-        columns = ['step', 't', 'state', 'valid', 'lost_time',
-                   'left_det', 'left_conf', 'right_det', 'right_conf', 'crosswalk_det', 'cross_lane_det']
-        for tag in self.tags:
-            columns += [f'lx_{tag}', f'rx_{tag}', f'src_{tag}', f'cx_{tag}', f'hw_{tag}']
-        columns += ['target_x', 'error', 'steer', 'v', 'w',
-                    'sonar_range', 'sonar_valid_range', 'sonar_age', 'sonar_invalid_streak',
-                    'sonar_invalid_ignored', 'estop_reason', 'recorded']
-        self.file = open(path, 'w', newline='')
-        self.writer = csv.DictWriter(self.file, fieldnames=columns)
-        self.writer.writeheader()
-        self.rows = 0
-
-    def write(self, step, t, state, valid, tracker, confs, error, steer, v, w, sonar, recorded):
-        row = {
-            'step': step, 't': _fmt(t, 3), 'state': state, 'valid': int(valid),
-            'lost_time': _fmt(tracker.lost_time, 3),
-            'left_det': int(confs['left_lane'] is not None), 'left_conf': _fmt(confs['left_lane'], 3),
-            'right_det': int(confs['right_lane'] is not None), 'right_conf': _fmt(confs['right_lane'], 3),
-            'crosswalk_det': int(confs['crosswalk'] is not None),
-            'cross_lane_det': int(confs['cross_lane'] is not None),
-            'target_x': _fmt(tracker.target_x, 2), 'error': _fmt(error, 4), 'steer': _fmt(steer, 4),
-            'v': _fmt(v, 3), 'w': _fmt(w, 3),
-            'sonar_range': _fmt(sonar['range'], 3), 'sonar_valid_range': _fmt(sonar['valid_range'], 3),
-            'sonar_age': _fmt(sonar['age'], 3), 'sonar_invalid_streak': sonar['streak'],
-            'sonar_invalid_ignored': sonar['ignored'], 'estop_reason': sonar['reason'],
-            'recorded': int(recorded),
-        }
-        for tag, obs in zip(self.tags, tracker.rows_obs):
-            row[f'lx_{tag}'] = _fmt(obs['lx'], 1)
-            row[f'rx_{tag}'] = _fmt(obs['rx'], 1)
-            row[f'src_{tag}'] = obs['source'] or ''
-            row[f'cx_{tag}'] = '' if obs['cx'] is None else obs['cx']
-            row[f'hw_{tag}'] = _fmt(obs['half_width'], 1)
-        self.writer.writerow(row)
-        self.rows += 1
-        if self.rows % LOG_FLUSH_EVERY == 0:
-            self.file.flush()
-
-    def close(self):
-        self.file.close()
-
-
-def render_frame(item):
-    """녹화 한 프레임: 마스크 오버레이(ultralytics) + step1 과 같은 추적 그림 + 행별 관측·정보 줄."""
-    view = item['result'].plot()
-    view = draw_tracking(view, item['centers'], item['error'], item['steer'], item['valid'],
-                         item['events'], item['tracker'])
-    return draw_debug(view, item['rows_obs'], item['lines'], top=58 + 28 * len(item['events']))   # 상태·이벤트 글자 아래
-
-
-class Recorder:
-    """
-    주행 기록 영상. 그리기와 인코딩은 별도 스레드에서 한다.
-    제어 루프는 submit() 으로 넘기기만 하고, 큐가 차 있으면 그 프레임을 버린다 (기다리지 않음).
-    """
-
-    def __init__(self, path, size, fps):
-        self.path = path
-        self.writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
-        if not self.writer.isOpened():
-            raise RuntimeError(f'녹화 파일을 열 수 없습니다: {path}')
-        self.queue = queue.Queue(maxsize=RECORD_QUEUE)
-        self.written = 0
-        self.dropped = 0
-        self.failed = 0
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-
-    def submit(self, item):
-        """반환: 녹화 대기열에 들어갔는지 (False 면 버려짐)."""
-        try:
-            self.queue.put_nowait(item)
-            return True
-        except queue.Full:
-            self.dropped += 1
-            return False
-
-    def _run(self):
-        while True:
-            item = self.queue.get()
-            if item is None:
-                break
-            try:
-                self.writer.write(render_frame(item))
-                self.written += 1
-            except Exception as error:           # 녹화 실패가 주행을 멈추지 않게
-                self.failed += 1
-                if self.failed == 1:
-                    print(f'녹화 오류 (이후 같은 오류는 세기만 함): {error}')
-
-    def close(self):
-        self.queue.put(None)                     # 남은 프레임을 다 쓴 뒤 끝남
-        self.thread.join(timeout=60)
-        self.writer.release()
 
 
 # =========================== ROS 노드 ===========================
@@ -578,7 +395,7 @@ def main():
             return exit_code                 # finally 에서 정리 후 종료
         node.get_logger().info(message)
 
-        source = VideoSource(args.video, FRAME_SIZE) if args.video else PiCameraSource(FRAME_SIZE)
+        source = VideoSource(args.video, FRAME_SIZE) if args.video else PiCameraSource(FRAME_SIZE, rotate_180=ROTATE_180, mirror=MIRROR_INPUT, swap_rb=SWAP_RB)
         width, height = FRAME_SIZE
 
         tracker = LaneTracker(

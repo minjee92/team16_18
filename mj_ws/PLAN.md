@@ -106,7 +106,7 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
 
 ## 현재 작업: 2단계 로봇 테스트
 
-코드: `src/robot/step2_lane_follow.py` (ROS 노드), `src/robot/drive_control.py` (ROS 무관 판단 로직: `FrontStop`, `LaneFollowController`).
+코드: `src/mj_lane_drive/mj_lane_drive/lane_follow_node.py` (ROS 노드, 옛 실행 경로 `src/robot/step2_lane_follow.py`), `src/mj_lane_core/mj_lane_core/drive_control.py` (ROS 무관 판단 로직: `FrontStop`, `LaneFollowController`).
 아래 "2단계 실행 절차" 대로 `--dry-run` 부터 시작하고, "2단계 테스트 항목" 순서로 확인한다.
 
 PC 에서 확인한 것 (로봇에서는 아직 안 돌려 봄):

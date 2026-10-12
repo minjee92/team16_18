@@ -32,7 +32,7 @@ from rclpy.executors import SingleThreadedExecutor  # noqa: E402
 from rclpy.node import Node                        # noqa: E402
 from sensor_msgs.msg import Range                  # noqa: E402
 
-import step2_lane_follow as S2      # noqa: E402  (SONAR_INVALID_COUNT)
+import mj_lane_drive.lane_follow_node as S2      # noqa: E402  (SONAR_INVALID_COUNT)
 
 STOP_LATENCY_MAX = 0.10       # 장애물 → 0 명령까지 (센서 주기 0.05초 + 여유)
 INVALID_LATENCY_MAX = S2.SONAR_INVALID_COUNT * 0.05 + 0.05   # 무효값 연속 N회(20 Hz) + 여유

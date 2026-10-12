@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>mj_lane_drive</name>
+  <version>0.1.0</version>
+  <description>ROS 공용 차선 주행 노드 (시뮬·실물 공통, 입력원을 인자로 고름)</description>
+  <maintainer email="lmj0421@infobank.net">minjee92</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>mj_lane_core</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
