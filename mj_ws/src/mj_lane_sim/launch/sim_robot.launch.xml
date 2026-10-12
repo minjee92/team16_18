@@ -1,0 +1,69 @@
+<?xml version='1.0' ?>
+<!-- 원본: tg_ws/src/pinky_fms/simulation/pinky_fms_sim/launch/sim_robot.launch.xml @ fb2f983 (origin/feat/tg-gazebo-course, GPT 작성 pinky_fms_sim). mj_lane_sim 으로 가져와 수정함 -->
+<!--
+  Gazebo 에 Pinky 한 대를 namespace 로 넣는다 (sim_world 가 먼저 떠 있어야 함).
+    ros2 launch mj_lane_sim sim_robot.launch.xml namespace:=amr_01 x:=1.80 y:=0.10 yaw:=3.14159
+
+  원본과 다른 점:
+    - Nav2(pinky_fms_bringup 의 robot_nav.launch.xml)·params_file·map 인자를 뺐다 (팀 관제 패키지 의존 제거).
+      위치 추정이 필요해지면(4단계) mj 쪽에서 따로 붙인다.
+    - 관제용 가짜 배터리(fake_battery.sh)를 뺐다.
+    - 카메라 기본값을 실물(mj_ws/CLAUDE.md 카메라 항목)에 맞췄다: 640x480, 수평 화각 53.5°, 렌즈 높이 0.060 m.
+      기울기(camera_tilt)는 실물이 미측정이라 원본 기본 8° 그대로. 원본 값으로 돌리려면
+      camera_width:=1280 camera_height:=720 camera_hfov_deg:=0 camera_lens_height:=-1   (0 / -1 = 모델 값 그대로)
+  토픽 이름(/amr_01/scan, odom, cmd_vel, camera/image_raw, camera/camera_info, tf)은 원본과 같다.
+  TF 프레임에는 접두어(amr_01/)가 붙는다 (가제보 모델 링크 이름이 그렇게 생성됨).
+-->
+<launch>
+    <arg name="namespace" default="amr_01"/>
+    <arg name="x" default="0.20"/>
+    <arg name="y" default="0.15"/>
+    <arg name="yaw" default="0.0"/>
+    <arg name="world_name" default="fms_course"/>
+    <arg name="camera" default="true"/>
+    <arg name="camera_width" default="640"/>
+    <arg name="camera_height" default="480"/>
+    <arg name="camera_hfov_deg" default="53.5"/>      <!-- 실물 OV5647 수평 화각. 0 이면 모델 값 그대로 (66°, 1.1519 rad) -->
+    <arg name="camera_lens_height" default="0.060"/>  <!-- 바닥에서 렌즈까지 m (실물 실측). -1 이면 모델 그대로 (약 0.063) -->
+    <arg name="camera_tilt" default="8"/>             <!-- 아래로 기울인 각도(도). 실물 미측정, 원본 기본값 -->
+
+    <!-- 로봇 모델: sim_urdf.sh 가 만든 URDF (가제보 센서 참조 수정 + 카메라를 실물 값으로). TF 프레임은 'amr_01/...' -->
+    <node pkg="robot_state_publisher" exec="robot_state_publisher" name="robot_state_publisher" namespace="$(var namespace)" output="screen">
+        <!-- warn: sim_camera.py 가 stderr 로 카메라 요약 한 줄을 쓴다. 기본(fail)이면 그 줄 때문에 launch 가 멈춘다 -->
+        <param name="robot_description" value="$(command '$(find-pkg-prefix mj_lane_sim)/lib/mj_lane_sim/sim_urdf.sh $(var namespace) $(var camera_width) $(var camera_height) $(var camera_tilt) $(var camera_hfov_deg) $(var camera_lens_height)' warn)"/>
+        <param name="frame_prefix" value="$(var namespace)/"/>
+        <param name="use_sim_time" value="True"/>
+        <remap from="/tf" to="tf"/>
+        <remap from="/tf_static" to="tf_static"/>
+    </node>
+
+    <node pkg="ros_gz_image" exec="image_bridge" name="camera_bridge_$(var namespace)"
+          output="screen" args="/$(var namespace)/camera/image_raw" if="$(var camera)">
+        <param name="use_sim_time" value="True"/>
+    </node>
+
+    <node pkg="ros_gz_bridge" exec="parameter_bridge" name="camera_info_bridge_$(var namespace)"
+          output="screen" if="$(var camera)"
+          args="/$(var namespace)/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo">
+        <param name="use_sim_time" value="True"/>
+    </node>
+
+    <node pkg="ros_gz_bridge" exec="parameter_bridge" name="joint_bridge_$(var namespace)"
+          output="screen" args="/$(var namespace)/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model">
+        <param name="use_sim_time" value="True"/>
+    </node>
+
+    <!-- 같은 이름의 모델이 남아 있으면(다시 띄울 때) 먼저 지운다. 없으면 실패해도 무시 -->
+    <executable cmd="$(find-pkg-prefix mj_lane_sim)/lib/mj_lane_sim/gz_remove_model.sh $(var world_name) $(var namespace)" output="log"/>
+    <timer period="2.0">
+        <node pkg="ros_gz_sim" exec="create" name="create_$(var namespace)" output="screen"
+              args="-world $(var world_name) -name $(var namespace) -topic /$(var namespace)/robot_description -x $(var x) -y $(var y) -z 0.05 -Y $(var yaw)"/>
+    </timer>
+
+    <!-- Gazebo <-> ROS 브리지: 토픽 이름은 실물과 같게 /namespace/... -->
+    <node pkg="ros_gz_bridge" exec="parameter_bridge" name="bridge_$(var namespace)" output="screen"
+          args="/$(var namespace)/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan /$(var namespace)/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry /$(var namespace)/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist /tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V">
+        <remap from="/tf" to="/$(var namespace)/tf"/>
+        <param name="use_sim_time" value="True"/>
+    </node>
+</launch>

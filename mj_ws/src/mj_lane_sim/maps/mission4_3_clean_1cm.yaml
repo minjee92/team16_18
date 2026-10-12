@@ -1,0 +1,8 @@
+# 원본: tg_ws/src/pinky_fms/maps/mission4_3_clean_1cm.yaml @ fb2f983 (origin/feat/tg-gazebo-course, GPT 작성 pinky_fms_sim). mj_lane_sim 으로 가져옴
+image: mission4_3_clean_1cm.pgm
+mode: trinary
+resolution: 0.010
+origin: [-0.567, -1.056, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
