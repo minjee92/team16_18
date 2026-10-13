@@ -8,6 +8,7 @@
     - Nav2(pinky_fms_bringup 의 robot_nav.launch.xml)·params_file·map 인자를 뺐다 (팀 관제 패키지 의존 제거).
       위치 추정이 필요해지면(4단계) mj 쪽에서 따로 붙인다.
     - 관제용 가짜 배터리(fake_battery.sh)를 뺐다.
+    - 시뮬 전용 전방 초음파 흉내(sim_front_range.py, 라이다 → /<ns>/us_sensor/range)를 붙였다 (front_range:=false 로 끔).
     - 카메라 기본값을 실물(mj_ws/CLAUDE.md 카메라 항목)에 맞췄다: 640x480, 수평 화각 53.5°, 렌즈 높이 0.060 m.
       기울기(camera_tilt)는 실물이 미측정이라 원본 기본 8° 그대로. 원본 값으로 돌리려면
       camera_width:=1280 camera_height:=720 camera_hfov_deg:=0 camera_lens_height:=-1   (0 / -1 = 모델 값 그대로)
@@ -26,6 +27,7 @@
     <arg name="camera_hfov_deg" default="53.5"/>      <!-- 실물 OV5647 수평 화각. 0 이면 모델 값 그대로 (66°, 1.1519 rad) -->
     <arg name="camera_lens_height" default="0.060"/>  <!-- 바닥에서 렌즈까지 m (실물 실측). -1 이면 모델 그대로 (약 0.063) -->
     <arg name="camera_tilt" default="8"/>             <!-- 아래로 기울인 각도(도). 실물 미측정, 원본 기본값 -->
+    <arg name="front_range" default="true"/>             <!-- 라이다로 전방 초음파 흉내 (주행 노드의 비상 정지용) -->
 
     <!-- 로봇 모델: sim_urdf.sh 가 만든 URDF (가제보 센서 참조 수정 + 카메라를 실물 값으로). TF 프레임은 'amr_01/...' -->
     <node pkg="robot_state_publisher" exec="robot_state_publisher" name="robot_state_publisher" namespace="$(var namespace)" output="screen">
@@ -66,4 +68,8 @@
         <remap from="/tf" to="/$(var namespace)/tf"/>
         <param name="use_sim_time" value="True"/>
     </node>
+
+    <!-- 시뮬에는 초음파가 없어 라이다로 흉내 낸다 (mj 추가. 실물 드라이버와 같은 Range 형식) -->
+    <node pkg="mj_lane_sim" exec="sim_front_range.py" name="sim_front_range" namespace="$(var namespace)"
+          output="screen" if="$(var front_range)"/>
 </launch>

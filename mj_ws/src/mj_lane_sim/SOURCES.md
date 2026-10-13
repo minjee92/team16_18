@@ -17,9 +17,15 @@
 | `scripts/smoke_sim.py` | `pinky_fms_sim/scripts/smoke_sim.py` | — | 머리 주석만 |
 | `scripts/gz_remove_model.sh` | `pinky_fms_sim/scripts/gz_remove_model.sh` | — | 머리 주석만 |
 | `launch/sim_world.launch.xml` | 같은 이름 | — | 패키지 이름 |
-| `launch/sim_robot.launch.xml` | 같은 이름 | — | Nav2(`pinky_fms_bringup`)·`params_file`·`map`·가짜 배터리 제거, 카메라 기본값을 실물 값으로 |
+| `launch/sim_robot.launch.xml` | 같은 이름 | — | Nav2(`pinky_fms_bringup`)·`params_file`·`map`·가짜 배터리 제거, 카메라 기본값을 실물 값으로, 전방 초음파 흉내 노드 추가 |
 | `scripts/sim_urdf.sh` | 같은 이름 | — | 화각·렌즈 높이 인자 추가, 기본 해상도 640×480 |
 | `scripts/sim_camera.py` | 같은 이름 | — | 화각(`--hfov-deg`)·렌즈 높이(`--lens-height`) 바꾸기 추가 |
+
+## mj 가 새로 만든 파일 (원본 없음)
+| 파일 | 하는 일 |
+|---|---|
+| `scripts/sim_front_range.py` | 라이다 → `/<ns>/us_sensor/range` (실물 초음파 드라이버와 같은 Range 형식, 상한 0.97 m). 시뮬에 초음파가 없어서 |
+| `scripts/run_mj_sim.sh` | `world / robot / camera / teleop / drive / stop`. 도메인 95·`GZ_PARTITION=mj_sim`·LOCALHOST 로만 띄운다 |
 
 ## 가져오지 않은 것과 이유
 - `sim_lane_follow.py`, `sim_mission.py`, `tests/check_autonomous_states.py`: 팀원 `pinky_autonomous` 차선 코드에 의존. 판단 코드는 mj 것 하나만 쓴다 (`mj_lane_drive`).
