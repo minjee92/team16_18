@@ -8,7 +8,8 @@
 | 경로 | 내용 | git |
 |---|---|---|
 | `src/mj_lane_core/` | **ROS 패키지.** 판단만 (ROS·하드웨어 없음). `lane_postprocess.py`: 마스크 → 차선 중앙점·조향, `drive_control.py`: 초음파 비상 정지·속도, `lane_draw.py`: 추적 결과 그리기 | 추적 |
-| `src/mj_lane_drive/` | **ROS 패키지.** 시뮬·실물 공용 주행 노드 `lane_follow_node.py` (step2), 입력원 `sources.py`, 주행 기록 `drive_record.py` | 추적 |
+| `src/mj_lane_drive/` | **ROS 패키지.** 시뮬·실물 공용 주행 노드 `lane_follow_node.py` (step2), 입력원 `sources.py` (영상 파일·Picamera2·ROS 카메라 토픽), 주행 기록 `drive_record.py` | 추적 |
+| `src/mj_lane_sim/` | **ROS 패키지 (PC 전용).** Gazebo 월드·바닥 그림·지도·로봇 launch, 라이다로 초음파 흉내, `scripts/run_mj_sim.sh`. 출처는 `SOURCES.md` | 추적 |
 | `src/tools/` | 개발용 (PC). `step1_check_lane_detection.py`: 저장 영상으로 차선 인식·조향 검증 | 추적 |
 | `src/robot/` | `step2_lane_follow.py`: 옛 실행 경로 (빌드 없이 `mj_lane_drive` 노드를 실행), `lane_mission_drive.py`(4단계 기반 미션 주행, 나중에 정리) | 추적 |
 | `src/station/` | 관제 PC에서 실행. `mission_gui.py`(맵에서 목표 지점 지정) | 추적 |
@@ -67,9 +68,9 @@
   (`wheel_radius 0.027`, `wheel_separation 0.0961`, `pinky_bringup/config/pinky_params.yaml`).
   `cmd_vel` → rpm 변환과 odom 계산에 실제로 쓰이는 값이다
   - 참고(측정 기준 불명확): 실측 지름 50mm(±5mm), 간격 85mm.
-    트레드는 접지점 중심 사이 거리인데 바퀴 안쪽 면 사이를 쟀을 가능성이 높고(타이어 폭 ~10mm를 더하면 96mm),
+    트레드는 접지점 중심 사이 거리인데 바퀴 안쪽 면 사이를 쟀을 가능성이 높고(타이어 폭 약 10mm를 더하면 96mm),
     지름도 고무 타이어 바깥까지 재면 54mm가 나올 수 있다
-- 최고 속도 약 0.28 m/s (bringup 100 rpm 제한 기준. 모터 무부하 103 rpm 이면 0.29 m/s), 권장 주행 0.10~0.15 m/s
+- 최고 속도 약 0.28 m/s (bringup 100 rpm 제한 기준. 모터 무부하 103 rpm 이면 0.29 m/s), 권장 주행 0.10–0.15 m/s
 - 센서: RPLiDAR C1, BNO055 9축 IMU, 초음파 US-016, IR TCRT5000
 
 ### 카메라
@@ -146,7 +147,7 @@ def to_wheel_rpm(v, omega):
 | 5 | right_lane | 로봇 기준 오른쪽 차선 |
 
 **left/right 판별 기준은 화면 위치가 아니라 프레임 하단에서 로봇 기준 좌·우다.**
-선이 화면 중앙~오른쪽에 보여도, 로봇이 그 선의 오른쪽을 주행하면 `left_lane`이다.
+선이 화면 중앙에서 오른쪽에 보여도, 로봇이 그 선의 오른쪽을 주행하면 `left_lane`이다.
 
 `categories` 목록의 id 1(이름 `"2"`)은 Roboflow가 만든 오류 클래스이며
 어노테이션은 모두 제거했다. **목록 자체는 지우지 말 것** — id 매핑이 깨진다.
@@ -184,7 +185,29 @@ valid/test 점수가 실제 성능보다 높게 나온다. 재분할이 필요�
 
 ## 테스트
 
-회귀 테스트: `bash src/tests/run_tests.sh` (빠른 것만, 몇 초) / `bash src/tests/run_tests.sh all` (ncnn 모델·입력 영상·ROS 포함, 약 2분, 순차 실행) — 정지·속도 로직을 일부러 바꿨으면 결과를 확인한 뒤 `src/tests/test_step2_replay.py` 의 `EXPECTED` 를 갱신한다.
+회귀 테스트: `bash src/tests/run_tests.sh` (빠른 것 6개, 몇 초) / `bash src/tests/run_tests.sh all` (13개, ncnn 모델·입력 영상·ROS 포함, 약 3분, 순차 실행) — 정지·속도 로직을 일부러 바꿨으면 결과를 확인한 뒤 `src/tests/test_step2_replay.py` 의 `EXPECTED` 를 갱신한다.
+
+## 시뮬레이션 (mj_lane_sim)
+
+PC 에서 Gazebo 로 mission4_3 코스를 띄우고, 실물과 같은 주행 노드(`mj_lane_drive`)를 붙인다.
+**내 도메인 95 + `GZ_PARTITION=mj_sim` + LOCALHOST 로만 돈다.** tg_ws 는 source 하지 않는다.
+
+터미널 4개에서 하나씩 (스크립트가 source·환경 변수를 알아서 한다. 직접 `ros2 topic` 을 칠 터미널만 따로 설정):
+```
+R=~/dev_ws/wt_mj/mj_ws/src/mj_lane_sim/scripts/run_mj_sim.sh
+bash $R world            # ① Gazebo 창. 10초쯤 기다림
+bash $R robot            # ② 출발점 (1.80, 0.10, 서쪽). "Entity creation successful" 확인
+bash $R camera           # ③ 카메라 화면
+bash $R drive --record   # ④ Space 출발, Enter 종료. teleop 과 동시에 켜지 말 것
+bash $R stop             # 끝난 뒤 Gazebo 가 남아 있으면
+```
+- 주행 노드 옵션: `--camera-topic --namespace amr_01 --sonar-topic us_sensor/range --use-sim-time` (run_mj_sim.sh 가 붙임).
+  시뮬 시간(/clock)으로 판단하므로 시뮬이 느려도 0.5초·2.0초 기준이 시뮬 초로 맞다
+- 카메라는 실물 값(640×480, 화각 53.5°, 렌즈 높이 60 mm)에 맞췄다. 기울기만 근사 (8°, 위 "카메라" 항목)
+- 초음파는 라이다로 흉내 낸다 (10 Hz, 화각 0.26 rad, 상한 0.97 m). 실물의 무효값(−0.03) 같은 고장 모양은 없다
+- **바닥 그림의 아래쪽 구간(고리 아랫변, 꼬리 아랫길)은 줄자와 다르다** (고리 아랫변 폭 11.2 cm, 줄자 16.6 cm). 이 구간 결과는 "실물과 다름" 으로 본다
+- Wi-Fi 가 끊기면 Gazebo 끼리 서로를 못 찾아 로봇이 생성되지 않는다 ("Network is unreachable")
+- 첫 주행 결과는 `PLAN.md` "시뮬레이션 결과" 에 있다
 
 ## 작업 규칙
 
@@ -216,4 +239,4 @@ refactor(mj_ws): reorganize src into role-based folders
 
 ### 파일 이름 규칙
 
-`step1_` ~ `step4_` 접두어는 `PLAN.md`의 4단계 계획 결과물에만 붙인다.
+`step1_`–`step4_` 접두어는 `PLAN.md`의 4단계 계획 결과물에만 붙인다.

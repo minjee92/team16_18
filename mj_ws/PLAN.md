@@ -24,7 +24,9 @@
 - **ncnn 모델 경로 수정** — 폴더 이름에 `_ncnn_model` 이 없으면 ultralytics 가 NCNN 으로 인식하지 못해 `best_ncnn_model/` 중첩 복원 (`585947f`)
 - **2단계 준비** — 공통 `LaneTracker` 에 D항·clip·`reset()` 추가 (`7b3d2c9`), 차선 상실을 초 단위로 (`e7b0e54`)
 - **2단계 코드 작성** — `src/robot/step2_lane_follow.py` + `src/robot/drive_control.py`. PC 검증 완료, 로봇 미검증
-- **진행 중** — 2단계 로봇 테스트
+- **시뮬 구조 (A2–A5)** — colcon 패키지로 나눔 (`2dbdd65`, `8d65cd8`), 시뮬 패키지 `mj_lane_sim` (`9506649`),
+  ROS 카메라 입력·시뮬 시간·제어 주기 맞춤 (`97012f7`), 라이다 초음파 흉내·`run_mj_sim.sh` (`fb43865`), 시뮬 첫 주행 (아래 "시뮬레이션 결과")
+- **진행 중** — 2단계 로봇 테스트 (시뮬 확인 끝, 실물 대기)
 
 ## 1단계 전체 영상 통계
 
@@ -56,7 +58,7 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
 | 좌우 양쪽 다 검출 | **43.8%** | 41.3% | 41.1% | 〃 |
 | crosswalk | 19.1% | 18.0% | 18.0% | 〃 |
 | 둘 다 미검출 | 88프레임 | 94 | 94 | 〃 |
-| 최장 미검출 | 69 (frame 1400~) | 70 (1399~) | 69 (1400~) | 〃 |
+| 최장 미검출 | 69 (frame 1400부터) | 70 (1399부터) | 69 (1400부터) | 〃 |
 | 프레임당 시간 (그중 추론) | 51.1 ms (48.0) | 22.1 (20.3) | 19.8 (17.8) | 19.0 (17.1) |
 
 결론:
@@ -66,11 +68,11 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
    **두 번째 프레임부터 검출이 0 이 된다** (수정 전 step1 에서 1469프레임 중 1프레임만 검출).
    step1 은 경고 후 고정 크기를 계속 쓰고, step2 는 시작할 때 크기가 다르면 메시지를 내고 종료한다
 2. **변환 손실은 없고, 차이는 해상도 때문이다.** 프레임별 검출 일치율:
-   .pt 320 ↔ ncnn 320 은 클래스별 99.5~99.9% (다른 프레임 최대 7개),
-   .pt 640 ↔ .pt 320 은 96.6~98.8% (320 에서 right_lane 48프레임, crosswalk 17프레임을 놓침)
+   .pt 320 ↔ ncnn 320 은 클래스별 99.5–99.9% (다른 프레임 최대 7개),
+   .pt 640 ↔ .pt 320 은 96.6–98.8% (320 에서 right_lane 48프레임, crosswalk 17프레임을 놓침)
 3. **640 export 여부는 Pi 에서 320 의 실제 fps 를 잰 뒤 결정한다.** 640 으로 얻는 것은 right_lane +3.1%p 뿐
    (crosswalk +1.1%p 는 3단계 명분으로도 약함). PC 에서 .pt 640 은 320 의 약 2.3배 느리고 (51.1 vs 22.1 ms),
-   Pi 5 는 PC 보다 2~4배 느릴 것으로 보여 640 은 5~7 fps 가 될 수도 있다 (추정). 아래 "2단계 테스트 항목"의 fps 측정 참고
+   Pi 5 는 PC 보다 2–4배 느릴 것으로 보여 640 은 5–7 fps 가 될 수도 있다 (추정). 아래 "2단계 테스트 항목"의 fps 측정 참고
 
 ## 완료: 후처리 분리 (`b903714`)
 
@@ -112,24 +114,57 @@ LOST_LIMIT(15) 이상은 1400부터 끝까지 이어진 69프레임 1회뿐인�
 PC 에서 확인한 것 (로봇에서는 아직 안 돌려 봄):
 
 - 단위 테스트 23개 통과: 초음파 판정(측정 없음·끊김·무효값 −0.03/NaN/inf·0.15 m 경계·latch·재개 거부), 속도/상실 단계 경계(0.5초·2.0초)
-- 저장 영상 재생 (ncnn 320, 영상 시간 기준): 주행 중 상실 구간 frame 955~977(1.15초)에서 감속만, 정지는 영상 끝 벽 구간(frame 1440~)뿐.
-  ncnn 320 은 .pt 640 보다 이 구간을 길게 놓친다 (.pt 는 954~, 15프레임)
+- 저장 영상 재생 (ncnn 320, 영상 시간 기준): 주행 중 상실 구간 frame 955–977(1.15초)에서 감속만, 정지는 영상 끝 벽 구간(frame 1440부터)뿐.
+  ncnn 320 은 .pt 640 보다 이 구간을 길게 놓친다 (.pt 는 954부터, 15프레임)
 - ROS 연동 (격리 도메인, 영상 입력, 가짜 초음파): 장애물 → 0.05초 안에, 무효값 3회 연속 → 0.15초 안에 정지
   (추론 루프를 기다리지 않음), 무효값 2회 튐은 주행 계속,
   초음파 끊김 → 0.38초 안에 정지, 정지 후 Space 전까지 주행 명령 0개, 정지 조건이 남아 있으면 Space 거부, 종료 시 0 명령
 
 ### 주행 속도 메모
 
-권장 주행 속도 **0.10~0.15 m/s**. 근거는 CLAUDE.md "하드웨어"의 `to_wheel_rpm` (참고용 계산),
+권장 주행 속도 **0.10–0.15 m/s**. 근거는 CLAUDE.md "하드웨어"의 `to_wheel_rpm` (참고용 계산),
 bringup 치수 기준 (지름 54mm, 간격 96.1mm → k = 60 / (π × 0.054) ≈ 353.7 rpm per m/s):
 
 - 최고 속도 0.283 m/s ← bringup 의 100 rpm 제한 (모터 무부하 103 rpm 이면 0.291 m/s)
-- 직진 0.10 m/s → 35.4 rpm, 0.15 m/s → 53.1 rpm (100 rpm 제한의 35~53%)
+- 직진 0.10 m/s → 35.4 rpm, 0.15 m/s → 53.1 rpm (100 rpm 제한의 35–53%)
 - 회전 여유: 바깥 바퀴 속도 = v + ω × 0.0961 / 2. 현재 `robot/lane_mission_drive.py` 의
   `MAX_ANGULAR` 1.5 rad/s 로 최대로 꺾으면
   v = 0.10 일 때 바깥 바퀴 0.172 m/s (60.9 rpm), v = 0.15 일 때 0.222 m/s (78.5 rpm)
   → 권장 범위 안에서는 최대 조향에도 100 rpm 제한에 걸리지 않는다 (bringup 의 비율 축소가 일어나지 않음)
 - 현재 `BASE_SPEED` 0.10 m/s 는 권장 범위 안이다
+
+## 시뮬레이션 결과 (2026-10-12–13)
+
+실행 방법은 CLAUDE.md "시뮬레이션". 증거 파일은 `outputs/a5_sim_drive/` (git 제외).
+
+**기준 CSV (A4)** — 시간을 제어 주기(0.1초) 단위로 맞춰 경계 0.5초·2.0초의 ±1 프레임 흔들림을 없앴다.
+같은 영상으로 두 번 돌려 경계 포함 다른 step 0개. 규칙은 옛 `lost_frames > 5 / > 20` 과 같다 (정확히 5개 놓쳤을 때는 아직 감속하지 않음).
+
+**첫 시뮬 주행 (A5)** — 0.10 m/s (실물과 같음), RTF 0.96 (0.91–1.00), 출발점 (1.80, 0.10) 서쪽.
+로봇 실제 위치는 Gazebo 에서 받고, 차선 가운데는 바닥 그림(`course.png`, `calibration.json`)에서 좌우 흰 테이프까지 거리로 쟀다.
+벗어남은 + 가 왼쪽, − 가 오른쪽.
+
+| 구간 | 거리 m | 벗어남 평균 / 최대 cm | 길 폭 cm | 선 위 | 초음파 최소 m |
+|---|---|---|---|---|---|
+| 고리 아랫변 **[실물과 다름]** | 0.00–0.50 | −1.8 / 2.3 | 11.4 | 0% | 0.285 |
+| 왼쪽 아래 모서리 | 0.50–0.70 | −2.7 / 3.5 | 14.4 | 0% | 0.206 |
+| 고리 왼쪽 변 | 0.70–1.20 | −2.6 / 3.3 | 14.4 | 0% | 0.396 |
+| 갈림길 J (오른쪽으로) | 1.20–1.50 | −6.7 / 13.5 | 16.8 | 27% | 0.311 |
+| 고리 윗변 | 1.50–1.90 | −5.1 / 6.4 | 16.8 | 0% | 0.373 |
+| 오른쪽 위 모서리 | 1.90–2.20 | −6.9 / 9.7 | 17.0 | 30% | 0.322 |
+| 고리 오른쪽 변 (횡단보도 C2) | 2.20–2.60 | −3.3 / 6.3 | 16.0 | 6% | 0.304 |
+| 오른쪽 아래 모서리 → 안쪽 사각형으로 넘어감 | 2.60–2.75 | −2.8 / 10.1 | — | 19% | 0.294 |
+
+- **2.6 m 를 차선 안에서 달렸다.** 곧은 길에서는 늘 2–5 cm 오른쪽(안쪽 선 쪽)으로 치우치고, 모서리와 J 에서는 27–30% 동안 선을 밟았다.
+  오른쪽 아래 모서리에서 일찍 꺾어 안쪽 사각형 안으로 들어갔고, 그 안을 5.6 m 돈 뒤 다시 아랫변으로 나왔다
+- **고리 모서리 벽 오탐 정지: 시뮬에서는 없었다** (모서리 초음파 최소 0.206 m, 기준 0.15 m). 실물만 멈추는 이유 후보 (분석만, 고치기는 아직):
+  1. 시뮬은 드라이버 화각 0.26 rad 만큼만 본다. 실물 초음파는 더 넓게 퍼지고 비스듬한 벽에서도 반사가 올 수 있다 (US-016 실제 빔 폭은 미확인)
+  2. 시뮬 지도가 실물보다 작고 아래쪽 길 폭이 달라, 모서리에서 벽까지 거리가 다를 수 있다
+  3. 시뮬 로봇은 안쪽으로 붙어 달려 바깥 벽과 멀었다. 실물이 바깥으로 크게 돌면 벽과 가까워진다
+  → 실물 주행 CSV 의 `sonar_range` 를 모서리 위치와 맞춰 보면 가릴 수 있다
+- **갈림길 J:** 갈 때마다 달랐다. 한 번은 좌우 차선을 모두 잃고 차선 상실 정지(1.28 m 지점),
+  한 번은 오른쪽(고리 윗변)으로, 한 번은 왼쪽(꼬리)으로 꺾다 너무 돌아 벽 끝을 정면으로 보고 비상 정지(초음파 0.034 m, 실제 장애물이라 맞는 정지).
+  좌/우 결정은 나중 단계에서 Nav2 목표 위치 (x, y) 로 한다
 
 ## 2단계 설계
 
@@ -146,13 +181,13 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 1. `ros2 launch pinky_bringup bringup_robot.launch.xml`
 2. `ros2 run pinky_sensor_adc main_node` ← **필수**. bringup 이 띄우지 않는다
 3. 확인: `ros2 topic hz /us_sensor/range` 가 약 20 Hz 로 나오는지 본 뒤에 다음 단계로 간다
-4. `cd ~/team16_18/mj_ws && python3 src/robot/step2_lane_follow.py --dry-run` (cmd_vel 없이 판단만 확인)
+4. `cd ~/mj_ws && python3 src/robot/step2_lane_follow.py --dry-run` (cmd_vel 없이 판단만 확인)
    → 이상 없으면 `--dry-run` 없이 실행. Space 로 출발 (초음파가 정상이고 장애물이 없을 때만 받아들임), Enter/ESC 로 종료.
-   git clone 이라 로봇에도 같은 폴더 구조가 있으므로 `--model` 없이 기본 경로로 동작한다
+   로봇의 `~/mj_ws` 도 같은 폴더 구조라 `--model` 없이 기본 경로로 동작한다
 5. 주행 기록: 프레임별 CSV 는 항상 `mj_ws/outputs/result_step2_lane_follow_<시각>.csv` 에 남는다
    (좌/우 차선 검출·conf, 샘플 행별 lx/rx/중앙점/도로 반폭, target_x, steer, v/w, 초음파).
    마스크 오버레이 영상도 필요하면 `--record` (같은 이름의 .mp4, 화면의 step 번호 = CSV 의 step).
-   주행 후 PC 로 가져오기: `rsync -av pinky@<로봇 IP>:~/team16_18/mj_ws/outputs/ mj_ws/outputs/`
+   주행 후 PC 로 가져오기: `rsync -av pinky@<로봇 IP>:~/mj_ws/outputs/ mj_ws/outputs/`
    종료: Enter/ESC·Ctrl+C·SIGTERM·SSH 끊김(SIGHUP)·예외 모두 정지 명령 → 영상 마무리(`영상 저장 완료: … (N프레임)`) → CSV 순으로 정리한다.
    **SIGKILL·전원 차단은 정리할 수 없어 mp4 가 열리지 않는다** (CSV 는 10줄마다 디스크에 써서 그 전까지 남는다)
 
@@ -162,22 +197,23 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
   그래도 출발 전 3번 확인은 빠뜨리지 않는다
 - 모델 입력 크기가 `INFER_SIZE` 와 다르면 시작할 때 메시지를 내고 종료한다 (exit 2)
 
-### 배포 (git clone)
+### 배포 (git clone, mj_ws 만)
 
-로봇 주소·경로는 예시다 (`pinky@<로봇 IP>`, `~/team16_18`).
+로봇에서는 `~/mj_ws` 만 쓴다 (팀원 tg_ws 는 받지 않음, `~/pinky_pro`·OEM 설정은 건드리지 않음). 로봇 주소는 예시다 (`pinky@<로봇 IP>`).
 
-1. 처음 한 번, 로봇에서:
+1. 처음 한 번, 로봇에서 (sparse checkout 으로 `mj_ws` 만). **(미검증: 실물 배포 단계에서 확인 예정)**
    ```
-   git clone https://github.com/minjee92/team16_18.git ~/team16_18
-   cd ~/team16_18 && git checkout feat/mj-lane-seg
+   git clone --filter=blob:none --sparse -b feat/mj-lane-seg https://github.com/minjee92/team16_18.git ~/mj_repo
+   cd ~/mj_repo && git sparse-checkout set mj_ws && ln -s ~/mj_repo/mj_ws ~/mj_ws
    ```
 2. 모델은 git 에 없으므로 PC 에서 rsync 한다 (저장소 루트에서). `best_ncnn_model` 폴더 이름을 그대로 유지할 것:
    ```
-   rsync -av mj_ws/models/lane_model_ncnn/ pinky@<로봇 IP>:~/team16_18/mj_ws/models/lane_model_ncnn/
+   rsync -av mj_ws/models/lane_model_ncnn/ pinky@<로봇 IP>:~/mj_ws/models/lane_model_ncnn/
    ```
-3. 코드 수정 후: PC 에서 commit → `git push`, 로봇에서 `cd ~/team16_18 && git pull`.
+3. 코드 수정 후: PC 에서 commit → `git push`, 로봇에서 `cd ~/mj_repo && git pull`.
    로봇에서 직접 고치면 pull 이 충돌하므로 수정은 PC 에서만 한다. 모델을 바꿨으면 2번을 다시 한다
 - 로봇 파이썬 환경에는 ultralytics, ncnn, picamera2 가 있어야 한다 (`lane_mission_drive.py` 와 같은 환경)
+- 나중 (mj_lane_real): 로봇에서 내 ROS 도메인 30 을 쓰고, `mj_lane_sim` 은 로봇에서 빌드하지 않는다
 
 ### 차선 상실 처리 (결정)
 
@@ -226,7 +262,7 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 | 토픽 | `us_sensor/range` (상대 이름 → 기본 네임스페이스에서 `/us_sensor/range`) |
 | 메시지 | `sensor_msgs/msg/Range`, `radiation_type = ULTRASOUND`, `frame_id = ultrasonic_link`, `field_of_view = 0.26` rad |
 | 단위 | m (`min_range = 0.02`, `max_range = 3.0`) |
-| 값 계산 | `range = adc / 4096 × 1.0 − 0.03` (ADC 12bit, 채널 3). 가능한 값은 **−0.03 ~ 약 0.97 m** |
+| 값 계산 | `range = adc / 4096 × 1.0 − 0.03` (ADC 12bit, 채널 3). 가능한 값은 **−0.03 m 에서 약 0.97 m** |
 | 측정 실패 / 범위 밖 | 드라이버에 유효성 검사가 없다. **inf·NaN·0 같은 표식 값은 오지 않는다.** I2C 읽기 실패 시 반환값을 확인하지 않고 버퍼 초깃값 0 을 그대로 써서 **−0.03 m** 가 온다. 먼 물체는 계산식상 상한 약 0.97 m 로 포화된다 (`max_range` 3.0 과 다름. 실제 포화 동작은 실측 필요) |
 | 센서 개수 | 초음파는 ADC 채널 1개만 읽어 **토픽 하나**로 publish 한다. 좌/우 별도 토픽 없음. 같은 노드가 IR 3채널(`ir_sensor/range`, `UInt16MultiArray` 원시 ADC 값)과 `batt_state` 도 publish 한다 |
 | 갱신 주기 | 파라미터 `rate` 기본 **20 Hz** (코드 주석의 "100Hz" 는 실제 값과 다름). 한 주기에 5채널 × 6 ms 대기가 있어 약 33 Hz 가 상한 |
@@ -239,7 +275,7 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
   - `range ≤ FRONT_STOP_DISTANCE`
   - 무효값(`range < min_range` = 0.02 m 미만, I2C 실패 시의 −0.03 m 포함, NaN/inf)이 **`SONAR_INVALID_COUNT = 3` 회 연속**
     (20 Hz 면 0.15초). 무효값을 아예 무시하면 센서 고장 시 비상 정지가 꺼지므로 연속이면 정지로 취급한다
-  - 1~2회 단발 튐은 무시한다. 처음엔 한 번에 정지하게 했더니 주행이 몇 초마다 끊겼다.
+  - 1–2회 단발 튐은 무시한다. 처음엔 한 번에 정지하게 했더니 주행이 몇 초마다 끊겼다.
     장애물 판정은 마지막 **유효** 거리로 하고, 무효값도 수신으로 쳐서 끊김(timeout) 판정과는 따로 간다
   - 무시한 횟수는 CSV(`sonar_invalid_streak`, `sonar_invalid_ignored`, `sonar_valid_range`)와
     종료 요약(`초음파 무효값: 무시 N회 (단발 튐 M번), 무효로 정지 K번`)에 남겨, 센서가 실제로 나빠지는지 본다
@@ -289,31 +325,25 @@ CLAUDE.md 의 `to_wheel_rpm` 은 속도 감을 잡기 위한 참고용 계산이
 
 ## 코드 배치 원칙
 
-실행 위치로 나눈다. 배포는 저장소 전체를 git clone 하지만 ("2단계 설계 > 배포"), 어느 코드가 어디서 도는지 폴더로 드러나게 한다.
+패키지로 나눈다. 의존 방향은 `mj_lane_core ← mj_lane_drive ← mj_lane_sim / mj_lane_real` 로만 간다.
+판단 코드는 하나이고, 시뮬과 실물은 입출력(launch·센서 어댑터)만 다르다.
 
 ```
 src/
-├── common/     양쪽에서 쓰는 순수 계산 (차선 후처리, 좌표 변환)
-│   └── lane_postprocess.py
-├── robot/      로봇에서 실행. ncnn 추론 + 주행
-│   ├── lane_mission_drive.py
-│   └── model_ncnn.py
-├── station/    관제 PC에서 실행. GUI
-│   └── mission_gui.py
-├── tools/      개발용. 저장 영상 검증 등
-│   └── step1_check_lane_detection.py
-└── legacy/     안 쓰지만 보관
-    ├── 1_realtime.py
-    ├── 2_realtime.py
-    ├── capture.py
-    ├── find_target_point.py
-    ├── find_target_point_dual.py
-    └── test_seg.py
+├── mj_lane_core/   판단만 (ROS·하드웨어 없음): 차선 후처리, 초음파 정지·속도, 그리기
+├── mj_lane_drive/  시뮬·실물 공용 ROS 주행 노드, 입력원, 주행 기록
+├── mj_lane_sim/    PC 전용 Gazebo 시뮬 (월드·바닥 그림·지도·launch·run_mj_sim.sh)
+├── robot/          옛 실행 경로 step2_lane_follow.py, lane_mission_drive.py (4단계 기반)
+├── station/        관제 PC GUI (mission_gui.py)
+├── tools/          개발용 (step1_check_lane_detection.py)
+├── tests/          회귀 시험 (run_tests.sh)
+└── legacy/         안 쓰지만 보관
 ```
+나중에 `mj_lane_real` (로봇 launch·카메라 발행·도메인 30) 과 `mj_fms` (미션·관제) 를 만든다.
 
 이름 규칙:
 
-- `step1_` ~ `step4_` 접두어는 위 4단계 계획의 결과물에만 붙인다
+- `step1_`–`step4_` 접두어는 위 4단계 계획의 결과물에만 붙인다
   (1단계 → `tools/step1_check_lane_detection.py`)
 - 아직 기반 코드인 `robot/lane_mission_drive.py`, `station/mission_gui.py` 는 접두어 없이 이름을 유지한다
 
