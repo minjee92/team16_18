@@ -8,8 +8,12 @@
   - 전방 초음파 비상 정지: 차선 검출과 무관하게 전방이 가까우면 즉시 정지 (fail-safe, 수동 재개)
   - 출력은 cmd_vel(m/s, rad/s)만. 바퀴 rpm·부호·다이나믹셀 단위 변환은 pinky_bringup 이 한다
 
-  구독: /us_sensor/range (sensor_msgs/Range)   ← pinky_sensor_adc 가 publish
-  발행: cmd_vel (Twist)
+  구독: /us_sensor/range (sensor_msgs/Range)   ← pinky_sensor_adc 가 publish (--sonar-topic 으로 바꿈)
+        camera/image_raw (sensor_msgs/Image)    ← --camera-topic 일 때만 (시뮬)
+  발행: cmd_vel (Twist)                         ← --namespace amr_01 이면 /amr_01/cmd_vel
+
+시간: 기본은 벽시계(time.monotonic, 실물). --use-sim-time 이면 /clock 의 시뮬 시간으로 판단·제어 주기를 잰다.
+  차선 상실 시간은 제어 주기(0.1초) 단위로 맞춰 판단에 넘긴다 (lane_mission_drive.py 의 "놓친 프레임 수" 와 같은 규칙).
 
 실행 순서 (PLAN.md "2단계 실행 절차"):
     1) ros2 launch pinky_bringup bringup_robot.launch.xml
@@ -29,6 +33,8 @@
         화면의 step 번호로 CSV 줄과 맞춘다. 그리기·인코딩은 별도 스레드라 제어 루프를 막지 않는다
 
 PC 테스트: --video 로 카메라 대신 저장 영상을 넣는다 (ROS 환경 필요).
+시뮬: --camera-topic --namespace amr_01 --sonar-topic us_sensor/range --use-sim-time
+      (mj_lane_sim 의 run_mj_sim.sh drive 가 이렇게 띄운다)
 """
 
 import argparse
@@ -49,14 +55,16 @@ import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from rclpy.signals import SignalHandlerOptions
+from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import Range
 
 from mj_lane_core.drive_control import FrontStop, LaneFollowController
 from mj_lane_core.lane_postprocess import LaneTracker, group_masks, pick_main
 from mj_lane_drive.drive_record import (REPORT_CLASSES, DriveLog, Recorder, _fmt, class_confs,
                                         output_paths)
-from mj_lane_drive.sources import PiCameraSource, VideoSource
+from mj_lane_drive.sources import NO_FRAME, PiCameraSource, RosImageSource, VideoSource
 
 
 # ============================== 설정 ==============================
@@ -108,6 +116,11 @@ FRONT_STOP_DISTANCE = 0.15       # m. 이 거리 이하면 정지 (센서 측정
 SONAR_TIMEOUT = 0.3              # s. 측정이 이보다 오래 안 오면 정지 (센서 20Hz = 0.05초 주기의 6배)
 SONAR_MIN_RANGE = 0.02           # m. 드라이버의 min_range. 이보다 작거나 NaN/inf 면 무효값 (I2C 실패 −0.03 등)
 SONAR_INVALID_COUNT = 3          # 무효값이 이만큼 연속이면 정지 (20 Hz 면 0.15초). 그보다 짧은 튐은 무시하고 센다
+
+# --- ROS 카메라 토픽 입력 (--camera-topic) ---
+CAMERA_TOPIC = 'camera/image_raw'  # 노드 기준 상대 이름. --namespace amr_01 이면 /amr_01/camera/image_raw
+CAMERA_TIMEOUT = 0.5             # s (벽시계). 새 영상이 이만큼 안 오면 정지 명령을 내고 계속 기다린다
+CLOCK_WAIT = 10.0                # s (벽시계). --use-sim-time 인데 /clock 이 이만큼 안 오면 종료
 
 STEER_SIGN = -1.0 if MIRROR_INPUT else 1.0
 
@@ -179,6 +192,16 @@ def verify_input_size(model, expected):
                    f'  INFER_SIZE 를 {used[0]} 로 바꾸거나, 모델을 {expected} 로 다시 export 하세요.')
 
 
+def control_tick_time(now, start, period):
+    """now 를 start 부터 센 제어 주기 단위 시각으로 맞춘다 (반올림).
+
+    차선 상실 시간을 그대로 재면 10 Hz 루프에서 5·20번째 프레임이 경계값 0.5·2.0초에 1 ms 안쪽으로 걸려,
+    실행마다 감속·정지 시작 프레임이 한 칸씩 갈렸다. 주기 단위로 맞추면 놓친 프레임 k 개 = k × 0.1초 가 되어
+    lane_mission_drive.py 의 "놓친 프레임 수 > 5 / > 20" 과 같은 규칙으로 고정된다.
+    루프가 밀려 주기를 건너뛰면 그만큼 시간도 건너뛴다 (반올림이라 오차는 반 주기 이내)."""
+    return round((now - start) / period) * period
+
+
 def build_masks(result, width, height):
     """ultralytics Results → 클래스 이름별 원본 크기 마스크 (후처리는 mj_lane_core)."""
     if result.masks is None or result.boxes is None:
@@ -197,22 +220,41 @@ class Step2LaneFollow(Node):
     cmd_vel 발행과 초음파 비상 정지를 맡는다.
     초음파 콜백은 별도 스레드(executor)에서 돌므로, 추론 루프를 기다리지 않고 바로 정지 명령을 낸다.
     콜백과 메인 루프의 발행은 같은 lock 으로 묶어, 정지 직후 주행 명령이 끼어들지 않게 한다.
+    시각은 모두 now_sec() 하나로 잰다 (벽시계 또는 시뮬 시간).
     """
 
-    def __init__(self, publish_cmd):
-        super().__init__('step2_lane_follow')
+    def __init__(self, publish_cmd, namespace='', sonar_topic=SONAR_TOPIC, use_sim_time=False):
+        overrides = [Parameter('use_sim_time', Parameter.Type.BOOL, True)] if use_sim_time else []
+        super().__init__('step2_lane_follow', namespace=namespace, parameter_overrides=overrides)
         self.publish_cmd = publish_cmd
+        self.use_sim_time = use_sim_time
         self.lock = threading.Lock()
         self.front = FrontStop(FRONT_STOP_DISTANCE, SONAR_TIMEOUT, SONAR_MIN_RANGE, SONAR_INVALID_COUNT)
         self.started = False
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        self.create_subscription(Range, SONAR_TOPIC, self.on_range, 10)
+        self.sonar_sub = self.create_subscription(Range, sonar_topic, self.on_range, 10)
+
+    def now_sec(self):
+        """판단에 쓰는 시각 (초). 기본은 벽시계, --use-sim-time 이면 /clock (오기 전에는 0)."""
+        if self.use_sim_time:
+            return self.get_clock().now().nanoseconds * 1e-9
+        return time.monotonic()
+
+    def sleep_until(self, deadline, should_stop):
+        """now_sec() 기준 deadline 까지 기다린다. 시뮬 시간은 멈출 수도 있어 짧게 나눠 기다리며 종료 요청을 본다."""
+        if not self.use_sim_time:
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(remaining)
+            return
+        while not should_stop() and self.now_sec() < deadline:
+            time.sleep(0.005)
 
     # ---------- 초음파 (executor 스레드) ----------
 
     def on_range(self, msg):
-        now = time.monotonic()
+        now = self.now_sec()
         with self.lock:
             was_tripped = self.front.tripped
             self.front.on_range(msg.range, now)
@@ -293,19 +335,38 @@ class Step2LaneFollow(Node):
 
 # ============================= 메인 =============================
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='2단계: 차선 가운데로 주행 (cmd_vel 발행)')
     parser.add_argument('--model', default=MODEL_PATH,
                         help='ncnn 모델 폴더 (이름에 _ncnn_model 필수, 기본: %(default)s)')
     parser.add_argument('--dry-run', action='store_true',
                         help='계산만 하고 cmd_vel 을 발행하지 않는다 (바퀴 정지)')
-    parser.add_argument('--video', default=None,
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument('--video', default=None,
                         help='PC 테스트용: 카메라 대신 저장 영상 사용')
+    source.add_argument('--camera-topic', nargs='?', const=CAMERA_TOPIC, default=None, metavar='TOPIC',
+                        help=f'카메라 대신 ROS 영상 토픽 사용 (값 없이 쓰면 {CAMERA_TOPIC}, 노드 네임스페이스 기준)')
+    parser.add_argument('--namespace', default='',
+                        help='노드 네임스페이스 (예: amr_01 → /amr_01/cmd_vel). 기본: 없음')
+    parser.add_argument('--sonar-topic', default=SONAR_TOPIC,
+                        help='초음파 Range 토픽. / 로 시작하지 않으면 네임스페이스 기준 (기본: %(default)s)')
+    parser.add_argument('--use-sim-time', action='store_true',
+                        help='판단·제어 주기를 /clock 시뮬 시간으로 잰다 (시뮬 전용. 기본은 벽시계)')
     parser.add_argument('--record', action='store_true',
                         help='마스크 오버레이 주행 영상도 저장 (프레임별 CSV 로그는 항상 저장)')
     parser.add_argument('--out-dir', default=str(OUTPUT_DIR),
                         help='CSV/영상 저장 폴더 (기본: %(default)s)')
-    return parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def wait_for_clock(node, stop):
+    """--use-sim-time: /clock 이 와서 시각이 0 보다 커질 때까지 기다린다 (벽시계 CLOCK_WAIT 초)."""
+    deadline = time.monotonic() + CLOCK_WAIT
+    while not stop.requested and time.monotonic() < deadline:
+        if node.now_sec() > 0:
+            return True
+        time.sleep(0.05)
+    return False
 
 
 class StopRequest:
@@ -367,13 +428,14 @@ def run_cleanup(steps):
 
 
 def main():
-    args = parse_args()
+    args = parse_args(remove_ros_args(sys.argv)[1:])         # --ros-args ... 는 rclpy 몫
 
     rclpy.init(signal_handler_options=SignalHandlerOptions.NO)   # 신호는 StopRequest 가 처리
     stop = StopRequest()
     stop.install()
 
-    node = Step2LaneFollow(publish_cmd=not args.dry_run)
+    node = Step2LaneFollow(publish_cmd=not args.dry_run, namespace=args.namespace,
+                           sonar_topic=args.sonar_topic, use_sim_time=args.use_sim_time)
     executor = SingleThreadedExecutor()
     executor.add_node(node)
     spin_thread = threading.Thread(target=spin_quietly, args=(executor,), daemon=True)
@@ -395,8 +457,26 @@ def main():
             return exit_code                 # finally 에서 정리 후 종료
         node.get_logger().info(message)
 
-        source = VideoSource(args.video, FRAME_SIZE) if args.video else PiCameraSource(FRAME_SIZE, rotate_180=ROTATE_180, mirror=MIRROR_INPUT, swap_rb=SWAP_RB)
+        if args.video:
+            source = VideoSource(args.video, FRAME_SIZE)
+            input_text = args.video
+        elif args.camera_topic:
+            source = RosImageSource(node, args.camera_topic, FRAME_SIZE, CAMERA_TIMEOUT,
+                                    warn=node.get_logger().warn)
+            input_text = f'토픽 {source.topic}'
+        else:
+            source = PiCameraSource(FRAME_SIZE, rotate_180=ROTATE_180, mirror=MIRROR_INPUT, swap_rb=SWAP_RB)
+            input_text = 'Picamera2'
         width, height = FRAME_SIZE
+
+        if args.use_sim_time:
+            if not wait_for_clock(node, stop):
+                if not stop.requested:
+                    print(f'\n오류: --use-sim-time 인데 {CLOCK_WAIT:.0f}초 동안 /clock 이 오지 않았습니다 '
+                          f'(시뮬이 떠 있는지, 같은 ROS_DOMAIN_ID 인지 확인)\n')
+                    stop.request('/clock 없음')
+                    exit_code = 2
+                return exit_code
 
         tracker = LaneTracker(
             width, height,
@@ -417,8 +497,9 @@ def main():
 
         print()
         print('=' * 60)
-        print(f'모드     : {"DRY RUN (cmd_vel 발행 안 함)" if args.dry_run else "주행"}'
-              f'{"  / 입력: " + args.video if args.video else ""}')
+        print(f'모드     : {"DRY RUN (cmd_vel 발행 안 함)" if args.dry_run else "주행"}  / 입력: {input_text}')
+        print(f'토픽     : 발행 {node.cmd_pub.topic_name}, 초음파 {node.sonar_sub.topic_name}')
+        print(f'시간     : {"시뮬 시간 (/clock)" if args.use_sim_time else "벽시계"}, 제어 {CONTROL_HZ:.0f} Hz')
         print(f'속도     : {BASE_SPEED:.2f} m/s, 차선 상실 {LOST_SLOW_SEC}s 감속 / {LOST_STOP_SEC}s 정지')
         print(f'비상 정지: 전방 {FRONT_STOP_DISTANCE:.2f} m 이하, 초음파 {SONAR_TIMEOUT}s 끊김, '
               f'무효값 {SONAR_INVALID_COUNT}회 연속')
@@ -430,19 +511,21 @@ def main():
 
         period = 1.0 / CONTROL_HZ
         steps = 0
-        loop_start = time.monotonic()
+        wall_start = time.monotonic()                # fps 표시용 (항상 벽시계)
+        loop_start = node.now_sec()
+        camera_stalled = False
 
         with KeyInput() as keys:
             if not keys.enabled:
                 print('경고: 터미널이 아니라 키를 받을 수 없습니다. 출발하지 않습니다.')
-            next_deadline = time.monotonic()
+            next_deadline = node.now_sec()
 
             while not stop.requested:
                 for key in keys.read():
                     if key == 'quit':
                         stop.request('키 Enter/ESC')
                     elif key == 'start':
-                        ok, reason = node.try_start(time.monotonic())
+                        ok, reason = node.try_start(node.now_sec())
                         print('출발' if ok else f'출발 불가: {reason}')
                 if stop.requested:
                     break
@@ -451,13 +534,24 @@ def main():
                 if frame is None:
                     stop.request('영상 끝')
                     break
-                now = time.monotonic()
+                if frame is NO_FRAME:                # 토픽 영상이 끊김: 멈추고 다시 기다린다 (기록 줄은 쓰지 않음)
+                    node.drive(0.0, 0.0, node.now_sec())
+                    if not camera_stalled:
+                        node.get_logger().warn(f'카메라 영상이 {CAMERA_TIMEOUT}초 넘게 오지 않음 — 정지하고 기다립니다')
+                        camera_stalled = True
+                    next_deadline = node.now_sec()
+                    continue
+                if camera_stalled:
+                    node.get_logger().info('카메라 영상 다시 받음')
+                    camera_stalled = False
+                now = node.now_sec()
 
                 result = model.predict(source=frame, conf=CONF, imgsz=INFER_SIZE, verbose=False)[0]
                 masks = build_masks(result, width, height)
 
                 centers, error, steer_raw, valid = tracker.update(
-                    pick_main(masks.get('left_lane')), pick_main(masks.get('right_lane')), now=now)
+                    pick_main(masks.get('left_lane')), pick_main(masks.get('right_lane')),
+                    now=control_tick_time(now, loop_start, period))
                 steer = steer_raw * STEER_SIGN
 
                 v, w, note = controller.command(steer, valid, tracker.lost_time)
@@ -465,7 +559,7 @@ def main():
 
                 step, t = steps, now - loop_start
                 confs = class_confs(masks)
-                sonar = node.sonar_snapshot(time.monotonic())   # 프레임 시각 이후 도착한 측정도 있어 지금 시각 기준
+                sonar = node.sonar_snapshot(node.now_sec())   # 프레임 시각 이후 도착한 측정도 있어 지금 시각 기준
                 recorded = False
                 if recorder is not None:
                     events = [text for name, text in (('crosswalk', 'CROSSWALK'), ('cross_lane', 'CROSS LANE'))
@@ -487,17 +581,16 @@ def main():
 
                 steps += 1
                 if steps % LOG_EVERY == 0:
-                    fps = steps / (time.monotonic() - loop_start)
+                    fps = steps / (time.monotonic() - wall_start)
                     lane = 'lane OK' if valid else note
                     print(f'{fps:4.1f}fps | {state:20s} | {lane:24s} | steer {steer:+.2f} | '
-                          f'v {v:.2f} w {w:+.2f} | {node.sonar_status(time.monotonic())}')
+                          f'v {v:.2f} w {w:+.2f} | {node.sonar_status(node.now_sec())}')
 
                 next_deadline += period
-                sleep_time = next_deadline - time.monotonic()
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
+                if next_deadline > node.now_sec():
+                    node.sleep_until(next_deadline, lambda: stop.requested)
                 else:
-                    next_deadline = time.monotonic()
+                    next_deadline = node.now_sec()
 
     except Exception:
         import traceback

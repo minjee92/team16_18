@@ -13,9 +13,9 @@ PY=${PY:-$HOME/venv/yolo_venv/bin/python}
 ROS_SETUP=${ROS_SETUP:-/opt/ros/jazzy/setup.bash}
 export PYTHONDONTWRITEBYTECODE=1
 
-fast=(test_drive_control.py test_lane_tracker.py test_step1_stats.py test_step2_no_picamera.py)
-slow=(test_tracker_parity.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py)
-needs_ros=(test_step2_no_picamera.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py)
+fast=(test_drive_control.py test_lane_tracker.py test_step1_stats.py test_step2_no_picamera.py test_step2_ros_inputs.py)
+slow=(test_tracker_parity.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py)
+needs_ros=(test_step2_no_picamera.py test_step2_ros_inputs.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py)
 
 tests=("${fast[@]}")
 [ "${1:-}" = all ] && tests+=("${slow[@]}")
