@@ -22,6 +22,10 @@
     abort() 로 꺾기를 취소하고 WAIT 로 돌아가 다시 키를 받는다 (멈춘 동안 위치가 바뀌었을 수 있어서)
   - 꺾기 전체가 timeout 초(시각 원천 기준) 안에 안 끝나면 정지하고 WAIT 로 돌아간다
   - odom 이 없으면 꺾기를 시작하지 않는다 (각도·거리를 잴 수 없음)
+  - 너무 많이 돌면 정지 → WAIT (결과 'over-rotation'). 앞 장애물 근처 제자리 회전 허용(--spin-near-wall, 0.07 m)이
+    90° 까지만 몸통이 앞 벽에 닿지 않는다는 계산을 전제로 하기 때문:
+      각도: 꺾기 시작 방향에서 max_turn_deg(100°) 를 넘으면 (돌기·다시 잡기 단계)
+      시간: 돌기 단계가 max_turn_deg ÷ turn_rate 초(0.6 rad/s 면 2.9초)를 넘으면 — odom 이 회전을 못 따라갈 때 (값이 멈춤 등)
 
 각 상태 변화는 events 목록에 남긴다 (주행 노드가 갈림길 CSV 에 쓴다).
 """
@@ -41,7 +45,7 @@ def angle_diff(a, b):
 class JunctionGuide:
     def __init__(self, enter_dist=0.20, enter_speed=0.05, turn_rate=0.6, turn_angle_deg=70.0,
                  reacquire_speed=0.05, reacquire_frames=3, timeout=8.0,
-                 cross_window=1.0, cross_min=2, wait_lost_sec=0.5):
+                 cross_window=1.0, cross_min=2, wait_lost_sec=0.5, max_turn_deg=100.0):
         self.enter_dist = enter_dist
         self.enter_speed = enter_speed
         self.turn_rate = turn_rate
@@ -52,6 +56,8 @@ class JunctionGuide:
         self.cross_window = cross_window
         self.cross_min = cross_min
         self.wait_lost_sec = wait_lost_sec
+        self.max_turn = math.radians(max_turn_deg)
+        self.max_turn_sec = self.max_turn / turn_rate
 
         self.state = FOLLOW
         self.direction = None
@@ -59,6 +65,8 @@ class JunctionGuide:
         self.wait_since = None
         self.start_time = None
         self.start_pose = None
+        self.ref_yaw = None       # 꺾기를 시작한 방향 (돈 각도 상한 기준)
+        self.turn_since = None    # 돌기 단계 시작 시각 (시간 상한 기준)
         self.both_streak = 0
         self.cross_seen = deque()
         self.events = []          # [{'kind', 'time', ...}] 주행 노드가 꺼내 간다
@@ -102,10 +110,15 @@ class JunctionGuide:
 
         x0, y0, yaw0 = self.start_pose
         x, y, yaw = pose
+        if self.state in (TURN, REACQUIRE) and abs(angle_diff(yaw, self.ref_yaw)) > self.max_turn:
+            return self._over_rotation(now, pose, 'angle')
+        if self.state == TURN and now - self.turn_since > self.max_turn_sec:
+            return self._over_rotation(now, pose, 'time')
         if self.state == ENTER:
             if math.hypot(x - x0, y - y0) >= self.enter_dist:
                 self.state = TURN
                 self.start_pose = pose
+                self.turn_since = now
                 return 0.0, 0.0, 'JUNCTION TURN'
             return self.enter_speed, 0.0, 'JUNCTION ENTER'
 
@@ -137,6 +150,7 @@ class JunctionGuide:
         self.direction = direction
         self.start_time = now
         self.start_pose = pose
+        self.ref_yaw = pose[2]
         self.both_streak = 0
         self.state = REACQUIRE if direction == 'straight' else ENTER
         return True, f'{direction} 시작'
@@ -161,6 +175,11 @@ class JunctionGuide:
         return self.state in (ENTER, TURN, REACQUIRE)
 
     # ---------- 내부 ----------
+
+    def _over_rotation(self, now, pose, why):
+        self._finish(now, f'over-rotation ({why})', pose)
+        self._enter_wait(now, 'OVER ROTATION')
+        return 0.0, 0.0, 'JUNCTION OVER ROTATION'
 
     def _enter_wait(self, now, reason):
         self.state = WAIT

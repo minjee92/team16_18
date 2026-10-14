@@ -6,6 +6,7 @@
   - 키는 대기 중에만, odom 없으면 거부
   - 우회전: ENTER(앞으로 enter_dist 0.20 m) → TURN(−ω, 70°) → REACQUIRE(곧게, 좌우 차선 3프레임 연속) → FOLLOW
   - 좌회전은 +ω, 직진은 ENTER·TURN 없이 바로 다시 잡기
+  - 너무 많이 돌면(100°, 또는 돌기 2.9초) 정지 + WAIT
   - 제한 시간 넘으면 정지 + WAIT, 비상 정지(abort) 면 WAIT, 꺾는 중 odom 끊기면 WAIT
   - 상태 변화가 events 에 남음
 """
@@ -117,6 +118,36 @@ T.check('차선을 다시 못 잡으면 제한 시간(8초) 뒤 WAIT + timeout',
         and any(e.get('result') == 'timeout' for e in g.events), f'{len(states)} 프레임')
 g, r, states, cmds = run_turn('right', both_from=None, odom_cut=5)
 T.check('꺾는 중 odom 끊기면 WAIT', states[-1] == WAIT and any(e.get('result') == 'no odom' for e in g.events))
+
+# 너무 많이 돌기 (몸통이 앞 벽에 닿지 않는다는 0.07 m 기준은 90° 까지 전제)
+g = wait_by_stop()
+g.key('right', 0.0, (0, 0, 0))
+g.update(0.1, FOLLOW_CMD, False, False, False, 0.0, (0.2, 0, 0))          # 들어가기 끝 → 돌기
+yaw = 0.0
+for k in range(2, 40):
+    yaw -= math.radians(5)                                               # 돌기 단계 동안만 5° 씩
+    g.update(k * 0.1, FOLLOW_CMD, False, False, False, 0.0, (0.2, 0, yaw))
+    if g.state != TURN:
+        break
+T.check('정상 우회전은 70° 에서 다시 잡기로 (상한 안 걸림)', g.state == REACQUIRE
+        and not any(str(e.get('result', '')).startswith('over') for e in g.events), f'{g.state}')
+g = wait_by_stop()
+g.key('right', 0.0, (0, 0, 0))
+g.update(0.1, FOLLOW_CMD, False, False, False, 0.0, (0.2, 0, 0))
+g.state = 'REACQUIRE'                                                    # 다시 잡는 중에 방향이 크게 바뀌는 경우
+out = g.update(0.3, FOLLOW_CMD, False, False, False, 0.0, (0.2, 0, -math.radians(105)))
+T.check('꺾기 시작 방향에서 100° 넘게 돌면 정지 → WAIT (over-rotation angle)', out[:2] == (0.0, 0.0) and g.state == WAIT
+        and any(e.get('result') == 'over-rotation (angle)' for e in g.events))
+g = wait_by_stop()
+g.key('right', 0.0, (0, 0, 0))
+g.update(0.1, FOLLOW_CMD, False, False, False, 0.0, (0.2, 0, 0))          # 돌기 시작
+k = 2
+while g.state == TURN and k < 60:                                        # odom 방향이 멈춰 있음 (회전을 못 따라감)
+    g.update(k * 0.1, FOLLOW_CMD, False, False, False, 0.0, (0.2, 0, 0))
+    k += 1
+T.check('odom 이 회전을 못 따라가면 약 2.9초(100°÷0.6)에 정지 → WAIT (over-rotation time)',
+        g.state == WAIT and any(e.get('result') == 'over-rotation (time)' for e in g.events) and 2.9 <= (k - 1) * 0.1 - 0.1 <= 3.1,
+        f'{(k - 1) * 0.1 - 0.1:.1f}s')
 
 # 비상 정지
 g = wait_by_stop()

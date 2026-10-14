@@ -128,7 +128,9 @@ SONAR_INVALID_COUNT = 3          # 무효값이 이만큼 연속이면 정지 (2
 # 선택 기능 (기본 꺼짐 = 위 0.15 m 고정, 막히면 회전도 안 함). 시뮬(run_mj_sim.sh drive)에서만 켠다. 실물은 B4 에서 정함
 FRONT_STOP_SPEED_SCALED = (0.06, 0.9, 0.10)   # --speed-scaled-stop: 정지 거리 = 0.06 + 속도×0.9초, 0.10–0.15 m
                                               #   (0.10 m/s → 0.15 m, 0.05 m/s → 0.105 m). 시뮬 J 앞 벽 0.148 m 때문
-SPIN_MIN_DISTANCE = 0.05         # --spin-near-wall: 갈림길 회전 단계(전진 0)에서는 장애물이 이보다 멀면 제자리 회전 허용
+SPIN_MIN_DISTANCE = 0.07         # --spin-near-wall: 갈림길 회전 단계(전진 0)에서는 장애물이 이보다 멀면 제자리 회전 허용.
+                                 #   몸통(충돌 메시)이 90° 회전 때 앞으로 0.0765 m 나옴 → 초음파(+0.0267 m) 기준 0.050 m 필요,
+                                 #   센서 오차 1 cm + 여유 1 cm. 90° 까지 전제 → JUNCTION_MAX_TURN_DEG 로 막음. 실물은 B4 에서 다시 정함
 
 # --- ROS 카메라 토픽 입력 (--camera-topic) ---
 CAMERA_TOPIC = 'camera/image_raw'  # 노드 기준 상대 이름. --namespace amr_01 이면 /amr_01/camera/image_raw
@@ -146,6 +148,7 @@ JUNCTION_TURN_RATE = 0.6         # rad/s. 제자리 회전 속도
 JUNCTION_TURN_DEG = 70.0         # 도. 이만큼 돈 뒤 차선을 다시 잡는다 (남은 각은 차선 추종이 맞춤)
 JUNCTION_REACQUIRE_FRAMES = 3    # 좌우 차선이 이만큼 연속 보이면 보통 추종으로
 JUNCTION_TIMEOUT = 8.0           # s. 꺾기 전체 제한. 넘으면 정지하고 다시 대기
+JUNCTION_MAX_TURN_DEG = 100.0    # 도. 꺾기 시작 방향에서 이보다 많이 돌면(또는 돌기가 이 각÷회전 속도 초를 넘으면) 정지·대기
 JUNCTION_CROSS_WINDOW = 1.0      # s. 이 안에 cross_lane 이 JUNCTION_CROSS_MIN 번 보이고
 JUNCTION_CROSS_MIN = 2           #    차선 상실이 LOST_SLOW_SEC 를 넘으면 갈림길 대기 (차선 상실 정지도 대기)
 ARROW_KEYS = {'left': 'left', 'right': 'right', 'up': 'straight', 'down': 'pause'}
@@ -598,7 +601,8 @@ def main():
                                   turn_rate=JUNCTION_TURN_RATE, turn_angle_deg=JUNCTION_TURN_DEG,
                                   reacquire_speed=JUNCTION_SPEED, reacquire_frames=JUNCTION_REACQUIRE_FRAMES,
                                   timeout=JUNCTION_TIMEOUT, cross_window=JUNCTION_CROSS_WINDOW,
-                                  cross_min=JUNCTION_CROSS_MIN, wait_lost_sec=LOST_SLOW_SEC)
+                                  cross_min=JUNCTION_CROSS_MIN, wait_lost_sec=LOST_SLOW_SEC,
+                                  max_turn_deg=JUNCTION_MAX_TURN_DEG)
         log = DriveLog(csv_path, SAMPLE_ROWS,
                        extra_columns=('junction_state', 'junction_action') if guide else ())
         if guide:

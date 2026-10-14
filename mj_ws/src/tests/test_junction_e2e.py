@@ -227,7 +227,7 @@ def wait_cmd(pred, since, limit):
 harness.range = 0.5
 harness.cmds.clear()
 proc, master, log, log_path, out_dir = start_node(['--junction-keys', '--speed-scaled-stop', '--spin-near-wall'])
-T.check('[2] 선택 기능 안내 줄', '속도별 정지 거리' in log_path.read_text() and '갈림길 회전은 0.05 m 까지 허용' in log_path.read_text())
+T.check('[2] 선택 기능 안내 줄', '속도별 정지 거리' in log_path.read_text() and f'갈림길 회전은 {S2.SPIN_MIN_DISTANCE} m 까지 허용' in log_path.read_text())
 os.write(master, b' ')
 T.check('[2] 상실 정지 → 대기', wait_text(log_path, '갈림길 대기 (LANE LOST STOP)', 6))
 os.write(master, RIGHT)
@@ -238,8 +238,8 @@ t_near = time.monotonic()
 time.sleep(0.6)
 T.check('[2] D: 회전 중 0.12 m 장애물이면 비상 정지 없이 회전 계속',
         'OBSTACLE' not in log_path.read_text() and wait_cmd(lambda v, w: v == 0.0 and w < 0, t_near + 0.3, 0.1))
-harness.range = 0.04                                          # 몸통에 너무 가까움 → 회전도 막음
-T.check('[2] D: 0.04 m 면 회전도 막고 비상 정지 → 꺾기 취소', wait_text(log_path, 'aborted: ESTOP OBSTACLE', 2))
+harness.range = 0.04                                          # SPIN_MIN_DISTANCE(0.07 m)보다 가까움 → 회전도 막음
+T.check(f'[2] D: 0.04 m (< {S2.SPIN_MIN_DISTANCE} m) 면 회전도 막고 비상 정지 → 꺾기 취소', wait_text(log_path, 'aborted: ESTOP OBSTACLE', 2))
 t_stop = time.monotonic()
 time.sleep(0.5)
 T.check('[2] D: 정지 뒤 명령 0', all(v == 0.0 and w == 0.0 for t, v, w in harness.cmds if t > t_stop + 0.2))

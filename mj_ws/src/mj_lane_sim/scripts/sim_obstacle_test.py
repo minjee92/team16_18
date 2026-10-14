@@ -21,6 +21,7 @@ import time
 
 import rclpy
 from geometry_msgs.msg import Twist
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 
 RUN, NS = sys.argv[1], sys.argv[2]
@@ -62,7 +63,10 @@ os.environ.update(ROS_DOMAIN_ID='95', ROS_AUTOMATIC_DISCOVERY_RANGE='LOCALHOST')
 os.environ.pop('ROS_LOCALHOST_ONLY', None)
 rclpy.init()
 watch = Watch()
-threading.Thread(target=rclpy.spin, args=(watch,), daemon=True).start()
+executor = SingleThreadedExecutor()
+executor.add_node(watch)
+spin_thread = threading.Thread(target=executor.spin, daemon=True)
+spin_thread.start()
 
 out_dir = tempfile.mkdtemp(prefix='mj_obstacle_test_')
 log_path = os.path.join(out_dir, 'drive.log')
@@ -114,6 +118,9 @@ finally:
         os.killpg(proc.pid, 9)
     os.close(master)
     subprocess.run(['bash', os.path.join(HERE, 'gz_remove_model.sh'), 'fms_course', BOX], env=gz_env(), capture_output=True)
+    executor.shutdown()                  # 정리 순서: spin 을 멈추고 스레드가 끝난 뒤에 노드·rclpy 를 내린다
+    spin_thread.join(timeout=5)          #   (순서가 바뀌면 끝에 'terminate called … Aborted' 가 날 수 있다)
+    watch.destroy_node()
     rclpy.shutdown()
 print(f'\n[obstacle-test] {sum(results)}/{len(results)} passed  (기록: {out_dir})')
 sys.exit(0 if all(results) else 1)
