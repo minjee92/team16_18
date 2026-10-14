@@ -41,9 +41,10 @@ def _fmt(value, digits):
 
 
 class DriveLog:
-    """프레임(제어 스텝)별 주행 로그 CSV. 값이 없으면 빈칸."""
+    """프레임(제어 스텝)별 주행 로그 CSV. 값이 없으면 빈칸.
+    extra_columns: 옵션 기능이 붙이는 열 (예: --junction-keys 의 junction_state). 없으면 열이 지금 그대로다."""
 
-    def __init__(self, path, sample_rows):
+    def __init__(self, path, sample_rows, extra_columns=()):
         self.path = path
         self.tags = [f'{round(r * 100)}' for r in sample_rows]          # '90', '80', '70', '60'
         columns = ['step', 't', 'state', 'valid', 'lost_time',
@@ -53,12 +54,13 @@ class DriveLog:
         columns += ['target_x', 'error', 'steer', 'v', 'w',
                     'sonar_range', 'sonar_valid_range', 'sonar_age', 'sonar_invalid_streak',
                     'sonar_invalid_ignored', 'estop_reason', 'recorded']
+        columns += list(extra_columns)
         self.file = open(path, 'w', newline='')
         self.writer = csv.DictWriter(self.file, fieldnames=columns)
         self.writer.writeheader()
         self.rows = 0
 
-    def write(self, step, t, state, valid, tracker, confs, error, steer, v, w, sonar, recorded):
+    def write(self, step, t, state, valid, tracker, confs, error, steer, v, w, sonar, recorded, extra=None):
         row = {
             'step': step, 't': _fmt(t, 3), 'state': state, 'valid': int(valid),
             'lost_time': _fmt(tracker.lost_time, 3),
@@ -73,6 +75,8 @@ class DriveLog:
             'sonar_invalid_ignored': sonar['ignored'], 'estop_reason': sonar['reason'],
             'recorded': int(recorded),
         }
+        if extra:
+            row.update(extra)
         for tag, obs in zip(self.tags, tracker.rows_obs):
             row[f'lx_{tag}'] = _fmt(obs['lx'], 1)
             row[f'rx_{tag}'] = _fmt(obs['rx'], 1)

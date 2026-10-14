@@ -13,9 +13,9 @@ PY=${PY:-$HOME/venv/yolo_venv/bin/python}
 ROS_SETUP=${ROS_SETUP:-/opt/ros/jazzy/setup.bash}
 export PYTHONDONTWRITEBYTECODE=1
 
-fast=(test_drive_control.py test_lane_tracker.py test_step1_stats.py test_step2_no_picamera.py test_step2_ros_inputs.py test_sim_front_range.py test_debug_view.py)
-slow=(test_tracker_parity.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py)
-needs_ros=(test_step2_no_picamera.py test_step2_ros_inputs.py test_sim_front_range.py test_debug_view.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py)
+fast=(test_drive_control.py test_lane_tracker.py test_step1_stats.py test_step2_no_picamera.py test_step2_ros_inputs.py test_sim_front_range.py test_debug_view.py test_junction.py test_keyinput.py)
+slow=(test_tracker_parity.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py test_junction_e2e.py)
+needs_ros=(test_step2_no_picamera.py test_step2_ros_inputs.py test_sim_front_range.py test_debug_view.py test_keyinput.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py test_junction_e2e.py)
 
 tests=("${fast[@]}")
 [ "${1:-}" = all ] && tests+=("${slow[@]}")

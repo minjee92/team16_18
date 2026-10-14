@@ -199,11 +199,16 @@ bash $R world            # ① Gazebo 창. 10초쯤 기다림
 bash $R robot            # ② 출발점 (1.80, 0.10, 서쪽). "Entity creation successful" 확인
 bash $R camera           # ③ 카메라 화면 (검출 표시 화면은 `bash $R camera debug`, drive 가 떠 있어야 나옴)
 bash $R drive --record   # ④ Space 출발, Enter 종료. teleop 과 동시에 켜지 말 것
+                         #    갈림길에서 키로 고르려면 drive --record --junction-keys (대기 중 ← → ↑)
 bash $R stop             # 끝난 뒤 Gazebo 가 남아 있으면
 ```
 - 주행 노드 옵션: `--camera-topic --namespace amr_01 --sonar-topic us_sensor/range --use-sim-time` (run_mj_sim.sh 가 붙임).
   시뮬 시간(/clock)으로 판단하므로 시뮬이 느려도 0.5초·2.0초 기준이 시뮬 초로 맞다
 - 검출 표시 영상: 주행 노드가 `lane_debug/image` (+ `/compressed`, JPEG) 를 낸다. 녹화(`--record`)와 같은 그림 (클래스별 색·범례·신뢰도). **구독자가 있을 때만** 별도 스레드에서 그려 제어 루프를 늦추지 않는다. 끄려면 `--no-debug-image`
+- 갈림길 화살표 키 (`--junction-keys`, 기본 꺼짐): 차선 상실 정지나 "cross_lane + 상실" 이면 멈추고 기다린다.
+  ← 좌회전 / → 우회전 / ↑ 직진. 앞으로 20 cm → odom 으로 70° 돌기 → 곧게 가며 좌우 차선을 다시 잡으면 보통 추종.
+  꺾는 중에도 초음파 정지가 우선이고, 8초 안에 못 끝내면 멈추고 다시 기다린다. 판단은 `mj_lane_core/junction.py`.
+  기록: `result_..._junctions.csv` (갈림길 사건·odom 위치·검출 상태) + 대기 순간 사진. 실물 SSH 는 `ssh -t` 로 접속한 터미널에서
 - 카메라는 실물 값(640×480, 화각 53.5°, 렌즈 높이 60 mm)에 맞췄다. 기울기만 근사 (8°, 위 "카메라" 항목)
 - 초음파는 라이다로 흉내 낸다 (10 Hz, 화각 0.26 rad, 상한 0.97 m). 실물의 무효값(−0.03) 같은 고장 모양은 없다
 - **바닥 그림의 아래쪽 구간(고리 아랫변, 꼬리 아랫길)은 줄자와 다르다** (고리 아랫변 폭 11.2 cm, 줄자 16.6 cm). 이 구간 결과는 "실물과 다름" 으로 본다

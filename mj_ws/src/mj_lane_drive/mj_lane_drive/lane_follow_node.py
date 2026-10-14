@@ -26,6 +26,8 @@
 키 (실행한 터미널에서):
     Space       출발 / 비상 정지 후 재개 (초음파가 정상이고 장애물이 없을 때만 받아들임)
     Enter, ESC  정지 후 종료
+    ← → ↑       --junction-keys 일 때만: 갈림길 대기 중 좌회전 / 우회전 / 직진 (꺾기 판단은 mj_lane_core.junction)
+                SSH 로 실행할 때도 같다. 단 `ssh 로봇 명령` 처럼 터미널 없이 띄우면 키를 못 받으므로 `ssh -t` 를 쓴다
 
 주행 기록 (outputs/, 실행 시각을 붙인 같은 이름):
     result_step2_lane_follow_<YYYYmmdd_HHMMSS>.csv   프레임별 로그 (항상)
@@ -39,6 +41,7 @@ PC 테스트: --video 로 카메라 대신 저장 영상을 넣는다 (ROS 환�
 """
 
 import argparse
+import math
 import os
 import select
 import signal
@@ -54,6 +57,7 @@ import cv2
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -62,10 +66,12 @@ from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import Range
 
 from mj_lane_core.drive_control import FrontStop, LaneFollowController
+from mj_lane_core.junction import JunctionGuide
 from mj_lane_core.lane_postprocess import LaneTracker, group_masks, pick_main
 from mj_lane_drive.drive_record import (REPORT_CLASSES, DriveLog, Recorder, _fmt, class_confs,
                                         output_paths)
 from mj_lane_drive.debug_view import DebugImagePublisher
+from mj_lane_drive.junction_record import JunctionLog
 from mj_lane_drive.sources import NO_FRAME, PiCameraSource, RosImageSource, VideoSource
 
 
@@ -124,10 +130,29 @@ CAMERA_TOPIC = 'camera/image_raw'  # 노드 기준 상대 이름. --namespace am
 CAMERA_TIMEOUT = 0.5             # s (벽시계). 새 영상이 이만큼 안 오면 정지 명령을 내고 계속 기다린다
 CLOCK_WAIT = 10.0                # s (벽시계). --use-sim-time 인데 /clock 이 이만큼 안 오면 종료
 
+# --- 갈림길 키 (--junction-keys). 시뮬로 맞춘 시작값, 실물에서 다시 본다 ---
+ODOM_TOPIC = 'odom'              # 노드 기준 상대 이름. 시뮬 /amr_01/odom, 실물 pinky_bringup 의 odom
+ODOM_MAX_AGE = 0.5               # s. odom 이 이보다 오래되면 없는 것으로 본다 (꺾기 시작·진행 안 함)
+JUNCTION_ENTER_DIST = 0.18       # m. 멈춘 자리(갈림길 앞)에서 꺾기 전에 들어가는 거리. 시뮬 J: 대기 y 0.75 → 윗변 차선 가운데 0.955 (0.20 m)
+                                 #    인데 거기까지 가면 앞 벽이 초음파 정지 거리(0.15 m)에 걸려(0.148 m) 0.18 m 로 둔다.
+                                 #    카메라가 앞을 보는 거리(기울기)에 따라 달라지므로 실물에서 다시 맞춘다
+JUNCTION_SPEED = 0.05            # m/s. 들어가기·다시 잡기 속도
+JUNCTION_TURN_RATE = 0.6         # rad/s. 제자리 회전 속도
+JUNCTION_TURN_DEG = 70.0         # 도. 이만큼 돈 뒤 차선을 다시 잡는다 (남은 각은 차선 추종이 맞춤)
+JUNCTION_REACQUIRE_FRAMES = 3    # 좌우 차선이 이만큼 연속 보이면 보통 추종으로
+JUNCTION_TIMEOUT = 8.0           # s. 꺾기 전체 제한. 넘으면 정지하고 다시 대기
+JUNCTION_CROSS_WINDOW = 1.0      # s. 이 안에 cross_lane 이 JUNCTION_CROSS_MIN 번 보이고
+JUNCTION_CROSS_MIN = 2           #    차선 상실이 LOST_SLOW_SEC 를 넘으면 갈림길 대기 (차선 상실 정지도 대기)
+ARROW_KEYS = {'left': 'left', 'right': 'right', 'up': 'straight'}
+
 STEER_SIGN = -1.0 if MIRROR_INPUT else 1.0
 
 
 # ============================ 입력 ============================
+
+ARROWS = {b'[A': 'up', b'[B': 'down', b'[C': 'right', b'[D': 'left',
+          b'OA': 'up', b'OB': 'down', b'OC': 'right', b'OD': 'left'}
+
 
 class KeyInput:
     """터미널 키 입력 (비차단). 터미널이 아니면 키를 받지 않는다."""
@@ -152,7 +177,9 @@ class KeyInput:
         return bool(select.select([sys.stdin], [], [], timeout)[0])
 
     def read(self):
-        """눌린 키 목록: 'start' (Space), 'quit' (Enter / ESC)."""
+        """눌린 키 목록: 'start' (Space), 'quit' (Enter / ESC), 'up'/'down'/'left'/'right' (화살표).
+        화살표는 ESC 로 시작하는 연속 바이트로 온다: ESC [ A–D, 일부 터미널(응용 모드)은 ESC O A–D.
+        ESC 한 번(뒤에 바로 이어지는 바이트 없음)만 종료로 본다."""
         keys = []
         while self.enabled and self._readable():
             try:
@@ -166,9 +193,14 @@ class KeyInput:
             elif char in ('\r', '\n'):
                 keys.append('quit')
             elif char == '\x1b':
-                if self._readable(timeout=0.02):     # 방향키 등 ESC 시퀀스는 무시
+                if self._readable(timeout=0.02):     # ESC 시퀀스: 화살표만 골라내고 나머지는 무시
+                    seq = b''
                     while self._readable():
-                        os.read(self.fd, 1)
+                        seq += os.read(self.fd, 1)
+                    for part in seq.split(b'\x1b'):   # 화살표를 빠르게 여러 번 누르면 이어서 온다
+                        name = ARROWS.get(part[:2])
+                        if name:
+                            keys.append(name)
                     continue
                 keys.append('quit')
         return keys
@@ -237,7 +269,7 @@ class Step2LaneFollow(Node):
     시각은 모두 now_sec() 하나로 잰다 (벽시계 또는 시뮬 시간).
     """
 
-    def __init__(self, publish_cmd, namespace='', sonar_topic=SONAR_TOPIC, use_sim_time=False):
+    def __init__(self, publish_cmd, namespace='', sonar_topic=SONAR_TOPIC, use_sim_time=False, odom_topic=None):
         overrides = [Parameter('use_sim_time', Parameter.Type.BOOL, True)] if use_sim_time else []
         super().__init__('step2_lane_follow', namespace=namespace, parameter_overrides=overrides)
         self.publish_cmd = publish_cmd
@@ -248,6 +280,8 @@ class Step2LaneFollow(Node):
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.sonar_sub = self.create_subscription(Range, sonar_topic, self.on_range, 10)
+        self.odom = None                             # (x, y, yaw, 받은 시각). odom_topic 을 줄 때만 (--junction-keys)
+        self.odom_sub = self.create_subscription(Odometry, odom_topic, self.on_odom, 10) if odom_topic else None
 
     def now_sec(self):
         """판단에 쓰는 시각 (초). 기본은 벽시계, --use-sim-time 이면 /clock (오기 전에는 0)."""
@@ -264,6 +298,26 @@ class Step2LaneFollow(Node):
             return
         while not should_stop() and self.now_sec() < deadline:
             time.sleep(0.005)
+
+    # ---------- odom (executor 스레드, --junction-keys 일 때만) ----------
+
+    def on_odom(self, msg):
+        q = msg.pose.pose.orientation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+        with self.lock:
+            self.odom = (msg.pose.pose.position.x, msg.pose.pose.position.y, yaw, self.now_sec())
+
+    def odom_pose(self, now):
+        """최근 odom (x, y, yaw). 없거나 ODOM_MAX_AGE 보다 오래되면 None."""
+        with self.lock:
+            odom = self.odom
+        if odom is None or now - odom[3] > ODOM_MAX_AGE:
+            return None
+        return odom[:3]
+
+    def is_tripped(self):
+        with self.lock:
+            return self.started and self.front.tripped, self.front.trip_reason
 
     # ---------- 초음파 (executor 스레드) ----------
 
@@ -368,6 +422,10 @@ def parse_args(argv=None):
                         help='판단·제어 주기를 /clock 시뮬 시간으로 잰다 (시뮬 전용. 기본은 벽시계)')
     parser.add_argument('--record', action='store_true',
                         help='마스크 오버레이 주행 영상도 저장 (프레임별 CSV 로그는 항상 저장)')
+    parser.add_argument('--junction-keys', action='store_true',
+                        help='갈림길에서 멈추고 화살표 키(← 좌 / → 우 / ↑ 직진)로 방향을 고른다 (기본: 끔, 지금 동작 그대로)')
+    parser.add_argument('--odom-topic', default=ODOM_TOPIC,
+                        help='--junction-keys 가 꺾은 각도·거리를 재는 odom 토픽 (기본: %(default)s, 네임스페이스 기준)')
     parser.add_argument('--no-debug-image', action='store_true',
                         help='검출 표시 영상 토픽(lane_debug/image)을 만들지 않는다 (기본: 구독자가 있을 때만 그림)')
     parser.add_argument('--out-dir', default=str(OUTPUT_DIR),
@@ -451,7 +509,8 @@ def main():
     stop.install()
 
     node = Step2LaneFollow(publish_cmd=not args.dry_run, namespace=args.namespace,
-                           sonar_topic=args.sonar_topic, use_sim_time=args.use_sim_time)
+                           sonar_topic=args.sonar_topic, use_sim_time=args.use_sim_time,
+                           odom_topic=args.odom_topic if args.junction_keys else None)
     executor = SingleThreadedExecutor()
     executor.add_node(node)
     spin_thread = threading.Thread(target=spin_quietly, args=(executor,), daemon=True)
@@ -461,6 +520,8 @@ def main():
     log = None
     recorder = None
     debug = None
+    guide = None
+    jlog = None
     exit_code = 0
     try:
         from ultralytics import YOLO
@@ -508,7 +569,16 @@ def main():
         )
 
         csv_path, video_path = output_paths(args.out_dir)
-        log = DriveLog(csv_path, SAMPLE_ROWS)
+        if args.junction_keys:
+            guide = JunctionGuide(enter_dist=JUNCTION_ENTER_DIST, enter_speed=JUNCTION_SPEED,
+                                  turn_rate=JUNCTION_TURN_RATE, turn_angle_deg=JUNCTION_TURN_DEG,
+                                  reacquire_speed=JUNCTION_SPEED, reacquire_frames=JUNCTION_REACQUIRE_FRAMES,
+                                  timeout=JUNCTION_TIMEOUT, cross_window=JUNCTION_CROSS_WINDOW,
+                                  cross_min=JUNCTION_CROSS_MIN, wait_lost_sec=LOST_SLOW_SEC)
+        log = DriveLog(csv_path, SAMPLE_ROWS,
+                       extra_columns=('junction_state', 'junction_action') if guide else ())
+        if guide:
+            jlog = JunctionLog(csv_path, SAMPLE_ROWS)
         if not args.no_debug_image:
             camera_frame = f'{args.namespace.strip("/")}/front_camera_link' if args.namespace else 'front_camera_link'
             debug = DebugImagePublisher(node, frame_id=camera_frame)
@@ -527,6 +597,8 @@ def main():
         print(f'주행 로그: {csv_path}')
         print(f'주행 영상: {video_path if recorder else "(--record 없음)"}')
         print(f'표시 영상: {debug.topic + " (구독자가 있을 때만)" if debug else "(끔)"}')
+        if guide:
+            print(f'갈림길   : 대기 중에 ← 좌회전 / → 우회전 / ↑ 직진  (odom {node.odom_sub.topic_name}, 기록 {jlog.path.name})')
         print('Space     : 출발 / 재개      Enter, ESC : 종료')
         print('=' * 60)
         print()
@@ -550,6 +622,14 @@ def main():
                     elif key == 'start':
                         ok, reason = node.try_start(node.now_sec())
                         print('출발' if ok else f'출발 불가: {reason}')
+                    elif key in ARROW_KEYS and guide is not None:     # 옵션이 없으면 화살표는 무시 (지금 동작 그대로)
+                        tripped, reason = node.is_tripped()
+                        if tripped:                                    # 비상 정지 중에는 꺾기를 시작하지 않는다
+                            print(f'갈림길 키 {key}: 비상 정지 중({reason}) — 먼저 Space 로 재개한 뒤 누르세요')
+                        else:
+                            now_key = node.now_sec()
+                            ok, message = guide.key(ARROW_KEYS[key], now_key, node.odom_pose(now_key))
+                            print(f'갈림길 키 {key}: {message}')
                 if stop.requested:
                     break
 
@@ -578,10 +658,19 @@ def main():
                 steer = steer_raw * STEER_SIGN
 
                 v, w, note = controller.command(steer, valid, tracker.lost_time)
-                v, w, state = node.drive(v, w, now)
+                confs = class_confs(masks)
+                if guide is not None:
+                    tripped, reason = node.is_tripped()
+                    pose = node.odom_pose(now)
+                    if tripped:
+                        guide.abort(now, f'ESTOP {reason}', pose)   # 꺾는 중이면 취소 → 대기 (Space 재개 뒤 다시 키)
+                    elif node.started:
+                        v, w, note = guide.update(now, (v, w, note), valid,
+                                                  confs['left_lane'] is not None and confs['right_lane'] is not None,
+                                                  confs['cross_lane'] is not None, tracker.lost_time, pose)
+                v, w, state = node.drive(v, w, now)                 # 초음파 정지는 여기서 맨 마지막에 (최우선)
 
                 step, t = steps, now - loop_start
-                confs = class_confs(masks)
                 sonar = node.sonar_snapshot(node.now_sec())   # 프레임 시각 이후 도착한 측정도 있어 지금 시각 기준
                 recorded = False
                 show = debug is not None and recorder is None and debug.wanted()   # 녹화 중이면 녹화 그림을 같이 씀
@@ -605,7 +694,23 @@ def main():
                         recorded = recorder.submit(item)
                     else:
                         debug.submit(item)
-                log.write(step, t, state, valid, tracker, confs, error, steer, v, w, sonar, recorded)
+                extra = None
+                if guide is not None:
+                    extra = {'junction_state': guide.state, 'junction_action': note if note.startswith('JUNCTION') else ''}
+                    for event in guide.events:
+                        if event['kind'] == 'wait':
+                            print(f'갈림길 대기 ({event["wait_reason"]}): ← 좌회전 / → 우회전 / ↑ 직진', flush=True)
+                        elif event['kind'] == 'result':
+                            print(f'갈림길 {event["direction"]}: {event["result"]} ({event["maneuver_sec"]:.1f}s)', flush=True)
+                        jlog.write(event, step, t, confs, tracker, sonar,
+                                   item={'frame': frame, 'masks': masks, 'centers': centers, 'error': error,
+                                         'steer': steer, 'valid': valid, 'events': [], 'rows_obs': tracker.rows_obs,
+                                         'tracker': SimpleNamespace(rows=tracker.rows, target_x=tracker.target_x),
+                                         'lines': [f'junction {jlog.junction + (event["kind"] == "wait")}  step {step}',
+                                                   f'{event["kind"]} {event.get("wait_reason", "")}']}
+                                   if event['kind'] == 'wait' else None)
+                    guide.events.clear()
+                log.write(step, t, state, valid, tracker, confs, error, steer, v, w, sonar, recorded, extra)
 
                 steps += 1
                 if steps % LOG_EVERY == 0:
@@ -654,6 +759,7 @@ def main():
             ('녹화', close_recorder if recorder is not None else None),
             ('표시 영상', debug.close if debug is not None else None),   # 녹화가 끝난 뒤 (녹화 스레드가 발행을 부름)
             ('주행 로그', close_log if log is not None else None),
+            ('갈림길 기록', jlog.close if jlog is not None else None),
             ('초음파 요약', report_sonar),
             ('ROS spin 스레드', stop_spin),
             ('ROS 노드', node.destroy_node),
