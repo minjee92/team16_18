@@ -6,6 +6,7 @@
      저장 영상 프레임을 /mjtest/camera/image_raw 에 rgb8 800x600 으로 보내고 (규격과 다른 크기),
      가짜 초음파는 /mjtest/us_sensor/range (노드에는 상대 이름 us_sensor/range 로 줌).
      → /mjtest/cmd_vel 로만 나가는지, 영상이 끊기면 멈추고 다시 오면 가는지, 크기 경고가 한 번인지.
+     검출 표시 영상 /mjtest/lane_debug/image 를 구독해 받는지 (구독자가 있을 때만 그림).
   B. 시뮬 시간 (--use-sim-time)
      가짜 /clock 을 실제의 절반 속도(RTF 0.5)로 보낸다. 차선이 없는 검은 영상이라 계속 "상실".
      → CSV 의 시각·상실 시간이 시뮬 초 기준(줄마다 0.1초)인지, 제어 루프가 실제 시간으로는 5 Hz 로 도는지.
@@ -60,7 +61,7 @@ class Harness(Node):
         self.black = False
         self.clock_on = False
         self.sim_ns = 1_000_000_000                    # 시뮬 시각 1초부터
-        self.cmds, self.root_cmds = [], []
+        self.cmds, self.root_cmds, self.debug = [], [], []
         cap = cv2.VideoCapture(str(testlib.VIDEO))
         self.frames = []
         for _ in range(200):
@@ -75,6 +76,8 @@ class Harness(Node):
         self.create_subscription(Twist, f'/{NS}/cmd_vel',
                                  lambda m: self.cmds.append((time.monotonic(), m.linear.x, m.angular.z)), 50)
         self.create_subscription(Twist, '/cmd_vel', lambda m: self.root_cmds.append(m), 50)
+        self.create_subscription(Image, f'/{NS}/lane_debug/image',
+                                 lambda m: self.debug.append((m.width, m.height, m.encoding)), 5)
         self.create_timer(0.05, self.tick_image)       # 20 Hz
         self.create_timer(0.05, self.tick_sonar)       # 20 Hz (실제 드라이버)
         self.create_timer(0.01, self.tick_clock)       # 실제 0.01초마다 시뮬 0.005초 → RTF 0.5
@@ -187,6 +190,9 @@ T.check('[A] 끊김·재개 안내', '카메라 영상이' in text and '카메�
 T.check('[A] 크기 경고(800x600 → 640x480) 한 번', text.count('카메라 토픽 크기 800x600') == 1)
 rows = read_csv(out_dir)
 drive = [r for r in rows if r['state'] == 'DRIVE']
+T.check('[A] 검출 표시 영상 받음 (640x480 bgr8, 10장 이상)', len(harness.debug) >= 10
+        and set(harness.debug) == {(640, 480, 'bgr8')}, f'{len(harness.debug)}장 {set(harness.debug)}')
+T.check('[A] 표시 영상 토픽 안내', f'표시 영상: /{NS}/lane_debug/image' in text)
 T.check('[A] CSV 에 DRIVE 줄, 차선 검출 있음', len(drive) >= 30 and sum(int(r['valid']) for r in drive) > len(drive) // 2,
         f'DRIVE {len(drive)}줄, valid {sum(int(r["valid"]) for r in drive)}')
 

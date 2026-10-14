@@ -2,7 +2,7 @@
 # 회귀 테스트 (순차 실행 — 추론을 동시에 돌리지 않는다)
 #
 #   bash src/tests/run_tests.sh          빠른 테스트만 (모델 불필요, 몇 초. no_picamera 는 ROS 환경을 쓴다)
-#   bash src/tests/run_tests.sh all      + 느린 테스트 (ncnn 모델·입력 영상·ROS 필요, 약 2~3분)
+#   bash src/tests/run_tests.sh all      + 느린 테스트 (ncnn 모델·입력 영상·ROS 필요, 약 3분)
 #
 # 환경 변수로 바꿀 수 있는 것:
 #   PY         파이썬 (기본 ~/venv/yolo_venv/bin/python: ultralytics, ncnn 설치된 venv)
@@ -13,9 +13,9 @@ PY=${PY:-$HOME/venv/yolo_venv/bin/python}
 ROS_SETUP=${ROS_SETUP:-/opt/ros/jazzy/setup.bash}
 export PYTHONDONTWRITEBYTECODE=1
 
-fast=(test_drive_control.py test_lane_tracker.py test_step1_stats.py test_step2_no_picamera.py test_step2_ros_inputs.py test_sim_front_range.py)
+fast=(test_drive_control.py test_lane_tracker.py test_step1_stats.py test_step2_no_picamera.py test_step2_ros_inputs.py test_sim_front_range.py test_debug_view.py)
 slow=(test_tracker_parity.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py)
-needs_ros=(test_step2_no_picamera.py test_step2_ros_inputs.py test_sim_front_range.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py)
+needs_ros=(test_step2_no_picamera.py test_step2_ros_inputs.py test_sim_front_range.py test_debug_view.py test_step2_input_size.py test_step2_replay.py test_step2_ros_e2e.py test_step2_record.py test_step2_shutdown.py test_step2_ros_topics.py)
 
 tests=("${fast[@]}")
 [ "${1:-}" = all ] && tests+=("${slow[@]}")

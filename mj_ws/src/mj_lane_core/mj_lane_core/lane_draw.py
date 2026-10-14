@@ -4,8 +4,9 @@
 step1 검증 도구와 step2 주행 기록 영상이 같은 그림을 쓰도록 공통으로 둔다.
 입력은 LaneTracker 결과와 화면(BGR)뿐이다.
 
-  draw_tracking : 중앙점·목표점·조향 막대·상태 글자 (step1 결과 영상과 동일)
-  draw_debug    : 행별 좌/우 차선 x·도로 반폭, 정보 줄 (step2 주행 기록용)
+  draw_tracking   : 중앙점·목표점·조향 막대·상태 글자 (step1 결과 영상과 동일)
+  draw_debug      : 행별 좌/우 차선 x·도로 반폭, 정보 줄 (step2 주행 기록용)
+  draw_detections : 클래스별 검출 마스크를 정해진 색으로 칠하고 범례·신뢰도 (step2 녹화·lane_debug 토픽)
 """
 
 import cv2
@@ -62,6 +63,16 @@ def draw_tracking(frame, centers, error, steer, valid, events, tracker):
 
 LEFT_COLOR = (255, 0, 0)        # 파랑 (BGR) — left_lane
 RIGHT_COLOR = (0, 165, 255)     # 주황 — right_lane
+CROSSWALK_COLOR = (255, 0, 255)  # 자홍 — crosswalk
+CROSS_LANE_COLOR = (0, 200, 0)  # 초록 — cross_lane
+
+# 범례 순서와 색. 데이터셋 어노테이션 검증 그림과 같은 규칙 (파랑 left, 주황 right)
+CLASS_COLORS = (
+    ('left_lane', LEFT_COLOR),
+    ('right_lane', RIGHT_COLOR),
+    ('crosswalk', CROSSWALK_COLOR),
+    ('cross_lane', CROSS_LANE_COLOR),
+)
 
 
 def _panel(frame, x0, y0, x1, y1, alpha=0.55):
@@ -106,4 +117,47 @@ def draw_debug(frame, rows_obs, lines, top=48):
         for i, text in enumerate(lines):
             cv2.putText(frame, text, (9, top + line_h * i), font, scale, (255, 255, 255), 1, cv2.LINE_AA)
 
+    return frame
+
+
+def draw_detections(frame, masks, alpha=0.45):
+    """
+    클래스별 검출 마스크를 정해진 색으로 반투명하게 칠하고 윤곽선을 그린 뒤, 오른쪽 위에 범례를 그린다.
+    (frame 을 직접 수정하고 돌려준다)
+
+      masks : lane_postprocess.group_masks() 결과 {이름: [{'mask', 'conf', 'area'}, ...]}
+      범례  : 색 칸 + 클래스 이름 + 이번 프레임 최고 신뢰도 (검출 없으면 '-')
+    같은 클래스가 여럿이면 모두 칠한다 (주행 판단은 그중 면적이 가장 큰 것만 쓴다: pick_main).
+    """
+    for name, color in CLASS_COLORS:
+        found = masks.get(name) or []
+        if not found:
+            continue
+        union = np.zeros(frame.shape[:2], np.uint8)
+        for det in found:
+            union |= det['mask'].astype(np.uint8)
+        region = union.astype(bool)
+        frame[region] = (frame[region] * (1 - alpha) + np.array(color) * alpha).astype(frame.dtype)
+        contours, _ = cv2.findContours(union, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(frame, contours, -1, color, 2)
+
+    font, scale = cv2.FONT_HERSHEY_SIMPLEX, 0.45
+    row_h, box, pad = 18, 12, 6
+    labels = []
+    for name, color in CLASS_COLORS:
+        found = masks.get(name) or []
+        conf = max((d['conf'] for d in found), default=None)
+        labels.append((f'{name} {conf:.2f}' if conf is not None else f'{name} -', color, conf is not None))
+    text_w = max(cv2.getTextSize(text, font, scale, 1)[0][0] for text, _, _ in labels)
+    width = frame.shape[1]
+    x0 = width - (text_w + box + 3 * pad)
+    _panel(frame, x0, 4, width - 4, 4 + pad + row_h * len(labels))
+    for i, (text, color, seen) in enumerate(labels):
+        y = 4 + pad + row_h * i
+        if seen:
+            cv2.rectangle(frame, (x0 + pad, y + 2), (x0 + pad + box, y + 2 + box), color, -1)
+        else:
+            cv2.rectangle(frame, (x0 + pad, y + 2), (x0 + pad + box, y + 2 + box), color, 1)
+        cv2.putText(frame, text, (x0 + 2 * pad + box, y + 13), font, scale,
+                    (255, 255, 255) if seen else (150, 150, 150), 1, cv2.LINE_AA)
     return frame

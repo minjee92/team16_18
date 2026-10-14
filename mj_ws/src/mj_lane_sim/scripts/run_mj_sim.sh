@@ -2,9 +2,9 @@
 # mj 시뮬 실행 (터미널마다 하나씩). 내 도메인 95 + GZ_PARTITION=mj_sim + LOCALHOST 로만 돈다. tg_ws 는 source 하지 않는다.
 #
 #   bash run_mj_sim.sh world             # ① Gazebo 월드 (창이 뜬다. 10초쯤 기다림)
-#   bash run_mj_sim.sh robot [x y yaw]   # ② 로봇 + 카메라·라이다·전방 초음파 흉내 (기본: 위쪽 길 1.80 0.10 3.14159)
-#   bash run_mj_sim.sh camera            # ③ 카메라 화면 (rqt_image_view)
-#   bash run_mj_sim.sh teleop            # ④ 키보드 운전 (먼저 z 를 6~7번 눌러 0.15 m/s 쯤으로. k = 멈춤)
+#   bash run_mj_sim.sh robot [x y yaw]   # ② 로봇 + 카메라·라이다·전방 초음파 흉내 (기본: 고리 아랫변 1.80 0.10 3.14159, 서쪽)
+#   bash run_mj_sim.sh camera [debug]    # ③ 카메라 화면 (rqt_image_view). debug = 검출 표시 화면 (drive 가 떠 있어야 나옴)
+#   bash run_mj_sim.sh teleop            # ④ 키보드 운전 (먼저 z 를 6–7번 눌러 0.15 m/s 쯤으로. k = 멈춤)
 #   bash run_mj_sim.sh drive [옵션...]   # ④ 대신: 내 차선 주행 노드 (Space 출발, Enter 종료). 옵션 예: --dry-run --record
 #   bash run_mj_sim.sh stop              # 남은 Gazebo 프로세스 정리 (mj_sim 파티션만)
 #
@@ -32,7 +32,9 @@ case "$cmd" in
     x=${1:-1.80}; y=${2:-0.10}; yaw=${3:-3.14159}
     exec ros2 launch mj_lane_sim sim_robot.launch.xml namespace:="$NS" x:="$x" y:="$y" yaw:="$yaw" ;;
   camera)
-    exec ros2 run rqt_image_view rqt_image_view "/$NS/camera/image_raw" ;;
+    # 창 위쪽 목록에서 원본(camera/image_raw)과 검출 표시(lane_debug/image)를 바꿔 볼 수도 있다
+    if [ "${1:-}" = debug ]; then topic="/$NS/lane_debug/image"; else topic="/$NS/camera/image_raw"; fi
+    exec ros2 run rqt_image_view rqt_image_view "$topic" ;;
   teleop)
     exec ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:="/$NS/cmd_vel" ;;
   drive)

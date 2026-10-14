@@ -11,6 +11,7 @@
   구독: /us_sensor/range (sensor_msgs/Range)   ← pinky_sensor_adc 가 publish (--sonar-topic 으로 바꿈)
         camera/image_raw (sensor_msgs/Image)    ← --camera-topic 일 때만 (시뮬)
   발행: cmd_vel (Twist)                         ← --namespace amr_01 이면 /amr_01/cmd_vel
+        lane_debug/image (+ /compressed)       ← 검출 표시 영상. 구독자가 있을 때만 그림 (--no-debug-image 로 끔)
 
 시간: 기본은 벽시계(time.monotonic, 실물). --use-sim-time 이면 /clock 의 시뮬 시간으로 판단·제어 주기를 잰다.
   차선 상실 시간은 제어 주기(0.1초) 칸 수로 세어 판단에 넘긴다 (lane_mission_drive.py 의 "놓친 프레임 수" 와 같은 규칙).
@@ -64,6 +65,7 @@ from mj_lane_core.drive_control import FrontStop, LaneFollowController
 from mj_lane_core.lane_postprocess import LaneTracker, group_masks, pick_main
 from mj_lane_drive.drive_record import (REPORT_CLASSES, DriveLog, Recorder, _fmt, class_confs,
                                         output_paths)
+from mj_lane_drive.debug_view import DebugImagePublisher
 from mj_lane_drive.sources import NO_FRAME, PiCameraSource, RosImageSource, VideoSource
 
 
@@ -366,6 +368,8 @@ def parse_args(argv=None):
                         help='판단·제어 주기를 /clock 시뮬 시간으로 잰다 (시뮬 전용. 기본은 벽시계)')
     parser.add_argument('--record', action='store_true',
                         help='마스크 오버레이 주행 영상도 저장 (프레임별 CSV 로그는 항상 저장)')
+    parser.add_argument('--no-debug-image', action='store_true',
+                        help='검출 표시 영상 토픽(lane_debug/image)을 만들지 않는다 (기본: 구독자가 있을 때만 그림)')
     parser.add_argument('--out-dir', default=str(OUTPUT_DIR),
                         help='CSV/영상 저장 폴더 (기본: %(default)s)')
     return parser.parse_args(argv)
@@ -456,6 +460,7 @@ def main():
     source = None
     log = None
     recorder = None
+    debug = None
     exit_code = 0
     try:
         from ultralytics import YOLO
@@ -504,8 +509,12 @@ def main():
 
         csv_path, video_path = output_paths(args.out_dir)
         log = DriveLog(csv_path, SAMPLE_ROWS)
+        if not args.no_debug_image:
+            camera_frame = f'{args.namespace.strip("/")}/front_camera_link' if args.namespace else 'front_camera_link'
+            debug = DebugImagePublisher(node, frame_id=camera_frame)
         if args.record:
-            recorder = Recorder(video_path, FRAME_SIZE, CONTROL_HZ)
+            recorder = Recorder(video_path, FRAME_SIZE, CONTROL_HZ,
+                                on_rendered=debug.publish_rendered if debug is not None else None)
 
         print()
         print('=' * 60)
@@ -517,6 +526,7 @@ def main():
               f'무효값 {SONAR_INVALID_COUNT}회 연속')
         print(f'주행 로그: {csv_path}')
         print(f'주행 영상: {video_path if recorder else "(--record 없음)"}')
+        print(f'표시 영상: {debug.topic + " (구독자가 있을 때만)" if debug else "(끔)"}')
         print('Space     : 출발 / 재개      Enter, ESC : 종료')
         print('=' * 60)
         print()
@@ -574,22 +584,27 @@ def main():
                 confs = class_confs(masks)
                 sonar = node.sonar_snapshot(node.now_sec())   # 프레임 시각 이후 도착한 측정도 있어 지금 시각 기준
                 recorded = False
-                if recorder is not None:
+                show = debug is not None and recorder is None and debug.wanted()   # 녹화 중이면 녹화 그림을 같이 씀
+                if recorder is not None or show:
                     events = [text for name, text in (('crosswalk', 'CROSSWALK'), ('cross_lane', 'CROSS LANE'))
                               if confs[name] is not None]
                     det = '  '.join(f'{short} {_fmt(confs[name], 2) or "-"}' for name, short in REPORT_CLASSES)
                     sonar_text = ('-' if sonar['range'] is None else
                                   f'{sonar["range"]:.2f}m ({sonar["age"]:.2f}s)  '
                                   f'inv {sonar["streak"]}/{SONAR_INVALID_COUNT} ign {sonar["ignored"]}')
-                    recorded = recorder.submit({
-                        'result': result, 'centers': centers, 'error': error, 'steer': steer,
+                    item = {
+                        'frame': frame, 'masks': masks, 'centers': centers, 'error': error, 'steer': steer,
                         'valid': valid, 'events': events, 'rows_obs': tracker.rows_obs,
                         'tracker': SimpleNamespace(rows=tracker.rows, target_x=tracker.target_x),
                         'lines': [f'step {step}  t {t:.1f}s  {state}',
                                   f'steer {steer:+.3f}  v {v:.2f}  w {w:+.2f}  lost {tracker.lost_time:.2f}s',
                                   det,
                                   f'sonar {sonar_text}  {sonar["reason"]}'],
-                    })
+                    }
+                    if recorder is not None:
+                        recorded = recorder.submit(item)
+                    else:
+                        debug.submit(item)
                 log.write(step, t, state, valid, tracker, confs, error, steer, v, w, sonar, recorded)
 
                 steps += 1
@@ -637,6 +652,7 @@ def main():
             ('정지 명령', node.stop),                                  # context 가 살아 있을 때 먼저
             ('카메라', source.close if source is not None else None),
             ('녹화', close_recorder if recorder is not None else None),
+            ('표시 영상', debug.close if debug is not None else None),   # 녹화가 끝난 뒤 (녹화 스레드가 발행을 부름)
             ('주행 로그', close_log if log is not None else None),
             ('초음파 요약', report_sonar),
             ('ROS spin 스레드', stop_spin),

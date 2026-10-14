@@ -1,5 +1,6 @@
 """
 주행 기록: 프레임별 CSV 로그(DriveLog)와 오버레이 영상(Recorder, 별도 스레드).
+render_frame 은 lane_debug 토픽(debug_view.py)도 같이 쓴다 → 녹화 영상과 토픽 화면이 같은 그림.
 """
 
 import csv
@@ -10,7 +11,7 @@ from pathlib import Path
 
 import cv2
 
-from mj_lane_core.lane_draw import draw_debug, draw_tracking
+from mj_lane_core.lane_draw import draw_debug, draw_detections, draw_tracking
 
 LOG_FLUSH_EVERY = 10             # CSV 를 이 줄마다 디스크에 씀 (중간에 죽어도 남게)
 RECORD_QUEUE = 20                # 녹화 대기 프레임 상한. 넘치면 그 프레임은 버린다 (제어 루프 보호)
@@ -88,8 +89,9 @@ class DriveLog:
 
 
 def render_frame(item):
-    """녹화 한 프레임: 마스크 오버레이(ultralytics) + step1 과 같은 추적 그림 + 행별 관측·정보 줄."""
-    view = item['result'].plot()
+    """한 프레임 그림: 클래스별 검출 색·범례(draw_detections) + step1 과 같은 추적 그림 + 행별 관측·정보 줄.
+    item['frame'] 은 건드리지 않는다 (복사본에 그림)."""
+    view = draw_detections(item['frame'].copy(), item['masks'])
     view = draw_tracking(view, item['centers'], item['error'], item['steer'], item['valid'],
                          item['events'], item['tracker'])
     return draw_debug(view, item['rows_obs'], item['lines'], top=58 + 28 * len(item['events']))   # 상태·이벤트 글자 아래
@@ -99,9 +101,11 @@ class Recorder:
     """
     주행 기록 영상. 그리기와 인코딩은 별도 스레드에서 한다.
     제어 루프는 submit() 으로 넘기기만 하고, 큐가 차 있으면 그 프레임을 버린다 (기다리지 않음).
+    on_rendered: 그린 그림을 받을 함수 (녹화 스레드에서 불림). lane_debug 토픽이 같은 그림을 다시 그리지 않고 쓴다.
     """
 
-    def __init__(self, path, size, fps):
+    def __init__(self, path, size, fps, on_rendered=None):
+        self.on_rendered = on_rendered
         self.path = path
         self.writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
         if not self.writer.isOpened():
@@ -128,8 +132,11 @@ class Recorder:
             if item is None:
                 break
             try:
-                self.writer.write(render_frame(item))
+                view = render_frame(item)
+                self.writer.write(view)
                 self.written += 1
+                if self.on_rendered is not None:
+                    self.on_rendered(view)
             except Exception as error:           # 녹화 실패가 주행을 멈추지 않게
                 self.failed += 1
                 if self.failed == 1:
