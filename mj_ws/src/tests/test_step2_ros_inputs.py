@@ -3,7 +3,7 @@
 
   - ROS 영상 메시지 → BGR 변환 (rgb8/bgr8/rgba8/bgra8, 줄 끝 여백), 지원 안 하는 인코딩은 오류
   - RosImageSource: 최신 프레임만, 새 프레임이 없으면 NO_FRAME, 크기가 다르면 줄이고 경고 한 번
-  - 제어 주기 맞춤: 실제 시계가 ±수 ms 흔들려도 감속·정지 시작 프레임이 늘 같음 (6번째 / 21번째 놓친 프레임)
+  - 제어 주기 칸 수: 시계가 ±수 ms 흔들리거나 한 번 밀린 뒤에도 감속·정지 시작 프레임이 늘 같음 (6번째 / 21번째)
   - 실행 인자: --video 와 --camera-topic 은 함께 못 씀, --ros-args 는 무시
 
 안전: ROS_DOMAIN_ID=87, LOCALHOST (다른 시험과 같음).
@@ -68,7 +68,8 @@ warnings = []
 source = RosImageSource(node, 'cam_test/image_raw', (64, 48), timeout=0.3, warn=warnings.append)
 executor = SingleThreadedExecutor()
 executor.add_node(node)
-threading.Thread(target=executor.spin, daemon=True).start()
+spin_thread = threading.Thread(target=executor.spin, daemon=True)
+spin_thread.start()
 
 
 def publish(width, height, value):
@@ -97,38 +98,56 @@ T.check('크기가 다르면 규격 크기로 줄임', frame is not NO_FRAME and
 T.check('크기 경고는 한 번만', len(warnings) == 1, f'{warnings}')
 T.check('토픽 이름 (노드 기준)', source.topic == '/cam_test/image_raw', source.topic)
 executor.shutdown()
+spin_thread.join(timeout=5)        # spin 이 끝난 뒤에 노드를 지운다 (아니면 가끔 C++ 쪽이 abort)
 node.destroy_node()
 
-# ---------------- 3. 제어 주기 맞춤 ----------------
+# ---------------- 3. 제어 주기 칸 수 ----------------
 period = 1.0 / S2.CONTROL_HZ
-T.check('제어 주기 맞춤: 반올림', [control for control in (S2.control_tick_time(100.0 + d, 100.0, period)
-                                                       for d in (0.0, 0.049, 0.051, 0.499, 0.502, 2.0007))]
-        == [0.0, 0.0, 0.1, 0.5, 0.5, 2.0])
 
 
-def first_slow_stop(jitter, seed):
-    """처음부터 차선을 못 보는 프레임을 10 Hz 로 넣고 (시계 흔들림 ±jitter), 감속·정지가 처음 나온 프레임 번호."""
-    rng = random.Random(seed)
+def tick_times(gaps):
+    c = S2.ControlTicks(period)
+    now, out = 1000.0, [c.time(1000.0)]
+    for g in gaps:
+        now += g
+        out.append(round(c.time(now), 6))
+    return out
+
+
+T.check('칸 수: 보통 간격(0.06–0.14초)은 늘 1칸', tick_times([0.06, 0.14, 0.1, 0.104, 0.096]) == [0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
+T.check('칸 수: 정말 밀리면(0.26초) 그만큼 더 셈 (3칸), 너무 짧아도(0.01초) 1칸',
+        tick_times([0.26, 0.01]) == [0.0, 0.3, 0.4], f'{tick_times([0.26, 0.01])}')
+
+
+def first_slow_stop(gaps):
+    """처음부터 차선을 못 보는 프레임을 주어진 간격으로 넣고, 감속·정지가 처음 나온 프레임 번호."""
     tracker = LaneTracker(640, 480, sample_rows=S2.SAMPLE_ROWS, row_weights=S2.ROW_WEIGHTS,
                           lost_stop_sec=S2.LOST_STOP_SEC)
     controller = LaneFollowController(S2.BASE_SPEED, S2.MIN_SPEED, S2.MAX_ANGULAR, S2.CORNER_SLOWDOWN,
                                       S2.STEER_TO_ANGULAR, S2.LOST_SLOW_SEC, S2.LOST_STOP_SEC)
-    start = 5000.0 + rng.random()
+    ticks = S2.ControlTicks(period)
+    now = 5000.0
     slow = stop = None
-    for k in range(30):
-        now = start + k * period + rng.uniform(-jitter, jitter)
-        tracker.update(None, None, now=S2.control_tick_time(now, start, period))
+    for k in range(len(gaps) + 1):
+        tracker.update(None, None, now=ticks.time(now))
         _, _, note = controller.command(0.0, False, tracker.lost_time)
         if slow is None and note.endswith('SLOW'):
             slow = k
         if stop is None and note.endswith('STOP'):
             stop = k
+        if k < len(gaps):
+            now += gaps[k]
     return slow, stop
 
 
-results = {first_slow_stop(0.004, seed) for seed in range(200)}
+rng = random.Random(0)
+jitter = {first_slow_stop([period + rng.uniform(-0.004, 0.004) for _ in range(30)]) for _ in range(200)}
 T.check('시계가 ±4 ms 흔들려도 감속은 6번째, 정지는 21번째 놓친 프레임에서 (200번 모두 같음)',
-        results == {(6, 21)}, f'{results}')
+        jitter == {(6, 21)}, f'{jitter}')
+# A4 방식의 약점: 앞에서 한 번 0.14초 밀린 뒤 프레임이 칸 가운데(±0.05)에 찍히는 경우 (D1 기준 CSV 비교에서 실제로 나옴)
+shifted = {first_slow_stop([0.14] + [period + rng.uniform(-0.004, 0.004) for _ in range(29)]) for _ in range(200)}
+T.check('한 번 0.14초 밀린 뒤에도 감속 6번째, 정지 21번째로 고정 (200번 모두 같음)',
+        shifted == {(6, 21)}, f'{shifted}')
 
 # ---------------- 4. 실행 인자 ----------------
 args = S2.parse_args(['--camera-topic', '--namespace', 'amr_01', '--sonar-topic', 'us_sensor/range', '--use-sim-time'])

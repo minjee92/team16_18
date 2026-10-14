@@ -13,7 +13,7 @@
   발행: cmd_vel (Twist)                         ← --namespace amr_01 이면 /amr_01/cmd_vel
 
 시간: 기본은 벽시계(time.monotonic, 실물). --use-sim-time 이면 /clock 의 시뮬 시간으로 판단·제어 주기를 잰다.
-  차선 상실 시간은 제어 주기(0.1초) 단위로 맞춰 판단에 넘긴다 (lane_mission_drive.py 의 "놓친 프레임 수" 와 같은 규칙).
+  차선 상실 시간은 제어 주기(0.1초) 칸 수로 세어 판단에 넘긴다 (lane_mission_drive.py 의 "놓친 프레임 수" 와 같은 규칙).
 
 실행 순서 (PLAN.md "2단계 실행 절차"):
     1) ros2 launch pinky_bringup bringup_robot.launch.xml
@@ -192,14 +192,26 @@ def verify_input_size(model, expected):
                    f'  INFER_SIZE 를 {used[0]} 로 바꾸거나, 모델을 {expected} 로 다시 export 하세요.')
 
 
-def control_tick_time(now, start, period):
-    """now 를 start 부터 센 제어 주기 단위 시각으로 맞춘다 (반올림).
+class ControlTicks:
+    """차선 상실 판단에 넘기는 시각을 제어 주기(0.1초) 칸 수로 만든다.
 
-    차선 상실 시간을 그대로 재면 10 Hz 루프에서 5·20번째 프레임이 경계값 0.5·2.0초에 1 ms 안쪽으로 걸려,
-    실행마다 감속·정지 시작 프레임이 한 칸씩 갈렸다. 주기 단위로 맞추면 놓친 프레임 k 개 = k × 0.1초 가 되어
+    상실 시간을 실제 시계로 그대로 재면 10 Hz 루프의 5·20번째 프레임이 경계값 0.5·2.0초에 1 ms 안쪽으로 걸려,
+    실행마다 감속·정지 시작 프레임이 한 칸씩 갈렸다. 칸 수로 세면 놓친 프레임 k 개 = k × 0.1초 가 되어
     lane_mission_drive.py 의 "놓친 프레임 수 > 5 / > 20" 과 같은 규칙으로 고정된다.
-    루프가 밀려 주기를 건너뛰면 그만큼 시간도 건너뛴다 (반올림이라 오차는 반 주기 이내)."""
-    return round((now - start) / period) * period
+
+    프레임마다 "앞 프레임과의 간격 ÷ 주기" 를 반올림해 더한다 (최소 1칸).
+    처음(A4)에는 시작 시각부터의 경과를 반올림했는데, 루프가 한 번 0.14초쯤 밀리면 그 뒤 프레임들이 칸의
+    정확히 중간에 찍혀 반올림이 위아래로 갈렸다 (상실 시간이 0초·0.2초씩 튐). 앞 프레임 기준이면 보통 간격
+    (0.05–0.15초)은 늘 1칸이고, 정말 밀린 만큼만(0.15초 넘게) 칸을 더 센다."""
+
+    def __init__(self, period):
+        self.period, self.prev, self.ticks = period, None, 0
+
+    def time(self, now):
+        if self.prev is not None:
+            self.ticks += max(1, round((now - self.prev) / self.period))
+        self.prev = now
+        return self.ticks * self.period
 
 
 def build_masks(result, width, height):
@@ -513,6 +525,7 @@ def main():
         steps = 0
         wall_start = time.monotonic()                # fps 표시용 (항상 벽시계)
         loop_start = node.now_sec()
+        ticks = ControlTicks(period)
         camera_stalled = False
 
         with KeyInput() as keys:
@@ -551,7 +564,7 @@ def main():
 
                 centers, error, steer_raw, valid = tracker.update(
                     pick_main(masks.get('left_lane')), pick_main(masks.get('right_lane')),
-                    now=control_tick_time(now, loop_start, period))
+                    now=ticks.time(now))
                 steer = steer_raw * STEER_SIGN
 
                 v, w, note = controller.command(steer, valid, tracker.lost_time)

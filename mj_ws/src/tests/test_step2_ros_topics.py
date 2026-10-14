@@ -104,7 +104,8 @@ rclpy.init()
 harness = Harness()
 executor = MultiThreadedExecutor(num_threads=3)
 executor.add_node(harness)
-threading.Thread(target=executor.spin, daemon=True).start()
+spin_thread = threading.Thread(target=executor.spin, daemon=True)
+spin_thread.start()
 
 
 def start_node(extra, label):
@@ -230,6 +231,7 @@ T.check('[C] /clock 없음 → 종료 코드 2, 안내', proc.returncode == 2 an
         f'exit {proc.returncode}')
 
 executor.shutdown()
+spin_thread.join(timeout=5)        # spin 이 끝난 뒤에 노드를 지운다 (아니면 가끔 C++ 쪽이 abort)
 harness.destroy_node()
 rclpy.shutdown()
 T.finish()
