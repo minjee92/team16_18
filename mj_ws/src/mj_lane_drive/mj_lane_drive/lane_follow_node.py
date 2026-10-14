@@ -27,6 +27,7 @@
     Space       출발 / 비상 정지 후 재개 (초음파가 정상이고 장애물이 없을 때만 받아들임)
     Enter, ESC  정지 후 종료
     ← → ↑       --junction-keys 일 때만: 갈림길 대기 중 좌회전 / 우회전 / 직진 (꺾기 판단은 mj_lane_core.junction)
+    ↓           --junction-keys 일 때만: 지금 멈추고 방향 키를 기다림 (갈림길 앞에서 사람이 누름)
                 SSH 로 실행할 때도 같다. 단 `ssh 로봇 명령` 처럼 터미널 없이 띄우면 키를 못 받으므로 `ssh -t` 를 쓴다
 
 주행 기록 (outputs/, 실행 시각을 붙인 같은 이름):
@@ -124,6 +125,10 @@ FRONT_STOP_DISTANCE = 0.15       # m. 이 거리 이하면 정지 (센서 측정
 SONAR_TIMEOUT = 0.3              # s. 측정이 이보다 오래 안 오면 정지 (센서 20Hz = 0.05초 주기의 6배)
 SONAR_MIN_RANGE = 0.02           # m. 드라이버의 min_range. 이보다 작거나 NaN/inf 면 무효값 (I2C 실패 −0.03 등)
 SONAR_INVALID_COUNT = 3          # 무효값이 이만큼 연속이면 정지 (20 Hz 면 0.15초). 그보다 짧은 튐은 무시하고 센다
+# 선택 기능 (기본 꺼짐 = 위 0.15 m 고정, 막히면 회전도 안 함). 시뮬(run_mj_sim.sh drive)에서만 켠다. 실물은 B4 에서 정함
+FRONT_STOP_SPEED_SCALED = (0.06, 0.9, 0.10)   # --speed-scaled-stop: 정지 거리 = 0.06 + 속도×0.9초, 0.10–0.15 m
+                                              #   (0.10 m/s → 0.15 m, 0.05 m/s → 0.105 m). 시뮬 J 앞 벽 0.148 m 때문
+SPIN_MIN_DISTANCE = 0.05         # --spin-near-wall: 갈림길 회전 단계(전진 0)에서는 장애물이 이보다 멀면 제자리 회전 허용
 
 # --- ROS 카메라 토픽 입력 (--camera-topic) ---
 CAMERA_TOPIC = 'camera/image_raw'  # 노드 기준 상대 이름. --namespace amr_01 이면 /amr_01/camera/image_raw
@@ -143,7 +148,7 @@ JUNCTION_REACQUIRE_FRAMES = 3    # 좌우 차선이 이만큼 연속 보이면 �
 JUNCTION_TIMEOUT = 8.0           # s. 꺾기 전체 제한. 넘으면 정지하고 다시 대기
 JUNCTION_CROSS_WINDOW = 1.0      # s. 이 안에 cross_lane 이 JUNCTION_CROSS_MIN 번 보이고
 JUNCTION_CROSS_MIN = 2           #    차선 상실이 LOST_SLOW_SEC 를 넘으면 갈림길 대기 (차선 상실 정지도 대기)
-ARROW_KEYS = {'left': 'left', 'right': 'right', 'up': 'straight'}
+ARROW_KEYS = {'left': 'left', 'right': 'right', 'up': 'straight', 'down': 'pause'}
 
 STEER_SIGN = -1.0 if MIRROR_INPUT else 1.0
 
@@ -269,13 +274,18 @@ class Step2LaneFollow(Node):
     시각은 모두 now_sec() 하나로 잰다 (벽시계 또는 시뮬 시간).
     """
 
-    def __init__(self, publish_cmd, namespace='', sonar_topic=SONAR_TOPIC, use_sim_time=False, odom_topic=None):
+    def __init__(self, publish_cmd, namespace='', sonar_topic=SONAR_TOPIC, use_sim_time=False, odom_topic=None,
+                 speed_scaled_stop=False, spin_near_wall=False):
         overrides = [Parameter('use_sim_time', Parameter.Type.BOOL, True)] if use_sim_time else []
         super().__init__('step2_lane_follow', namespace=namespace, parameter_overrides=overrides)
         self.publish_cmd = publish_cmd
         self.use_sim_time = use_sim_time
         self.lock = threading.Lock()
-        self.front = FrontStop(FRONT_STOP_DISTANCE, SONAR_TIMEOUT, SONAR_MIN_RANGE, SONAR_INVALID_COUNT)
+        self.front = FrontStop(FRONT_STOP_DISTANCE, SONAR_TIMEOUT, SONAR_MIN_RANGE, SONAR_INVALID_COUNT,
+                               speed_scaled=FRONT_STOP_SPEED_SCALED if speed_scaled_stop else None,
+                               spin_min=SPIN_MIN_DISTANCE if spin_near_wall else None)
+        self.last_speed = 0.0                        # 마지막으로 낸 전진 속도 (초음파 콜백의 정지 거리 판단용)
+        self.spin_allowed = False                    # 지금 명령이 갈림길 회전 단계의 제자리 회전인지 (--spin-near-wall)
         self.started = False
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
@@ -326,7 +336,9 @@ class Step2LaneFollow(Node):
         with self.lock:
             was_tripped = self.front.tripped
             self.front.on_range(msg.range, now)
-            if self.front.check(now) and not was_tripped:
+            if self.spin_allowed and not was_tripped and self.front.spin_ok(now):
+                return                               # 갈림길 제자리 회전 중: 너무 가깝지 않으면 회전은 계속
+            if self.front.check(now, self.last_speed) and not was_tripped:
                 self._publish(0.0, 0.0)              # 즉시 정지
                 if self.started:
                     self.get_logger().warn(
@@ -343,11 +355,17 @@ class Step2LaneFollow(Node):
                 self.started = True
         return ok, reason
 
-    def drive(self, v, w, now):
-        """주행 명령을 낸다. 비상 정지 중이거나 출발 전이면 0. 반환: (실제 v, 실제 w, 상태)."""
+    def drive(self, v, w, now, allow_spin=False):
+        """주행 명령을 낸다. 비상 정지 중이거나 출발 전이면 0. 반환: (실제 v, 실제 w, 상태).
+        allow_spin: 갈림길 회전 단계(--spin-near-wall). 전진 0 이고 장애물이 SPIN_MIN_DISTANCE 보다 멀면
+        정지 조건이어도 멈추지 않고(latch 하지 않고) 제자리 회전만 낸다. 센서 이상·너무 가까움이면 보통대로 정지."""
         with self.lock:
             was_tripped = self.front.tripped
-            tripped = self.front.check(now)          # 측정 끊김(timeout)은 콜백이 안 오므로 여기서 잡는다
+            self.spin_allowed = allow_spin and v == 0.0
+            if self.spin_allowed and not was_tripped and self.front.spin_ok(now):
+                tripped = False
+            else:
+                tripped = self.front.check(now, v)   # 측정 끊김(timeout)은 콜백이 안 오므로 여기서 잡는다
             if tripped and not was_tripped and self.started:
                 self.get_logger().warn(f'비상 정지: {self.front.trip_reason} — Space 로 재개')
 
@@ -358,6 +376,7 @@ class Step2LaneFollow(Node):
             else:
                 state = 'DRIVE'
             self._publish(v, w)
+            self.last_speed = v
         return v, w, state
 
     def sonar_snapshot(self, now):
@@ -426,6 +445,10 @@ def parse_args(argv=None):
                         help='갈림길에서 멈추고 화살표 키(← 좌 / → 우 / ↑ 직진)로 방향을 고른다 (기본: 끔, 지금 동작 그대로)')
     parser.add_argument('--odom-topic', default=ODOM_TOPIC,
                         help='--junction-keys 가 꺾은 각도·거리를 재는 odom 토픽 (기본: %(default)s, 네임스페이스 기준)')
+    parser.add_argument('--speed-scaled-stop', action='store_true',
+                        help='초음파 정지 거리를 속도에 맞춘다 (0.06+속도×0.9초, 0.10–0.15 m). 기본: 0.15 m 고정. 시뮬 전용')
+    parser.add_argument('--spin-near-wall', action='store_true',
+                        help=f'갈림길 회전 단계에서 앞이 막혀도 {SPIN_MIN_DISTANCE} m 보다 멀면 제자리 회전 허용. 기본: 끔. 시뮬 전용')
     parser.add_argument('--no-debug-image', action='store_true',
                         help='검출 표시 영상 토픽(lane_debug/image)을 만들지 않는다 (기본: 구독자가 있을 때만 그림)')
     parser.add_argument('--out-dir', default=str(OUTPUT_DIR),
@@ -510,7 +533,8 @@ def main():
 
     node = Step2LaneFollow(publish_cmd=not args.dry_run, namespace=args.namespace,
                            sonar_topic=args.sonar_topic, use_sim_time=args.use_sim_time,
-                           odom_topic=args.odom_topic if args.junction_keys else None)
+                           odom_topic=args.odom_topic if args.junction_keys else None,
+                           speed_scaled_stop=args.speed_scaled_stop, spin_near_wall=args.spin_near_wall)
     executor = SingleThreadedExecutor()
     executor.add_node(node)
     spin_thread = threading.Thread(target=spin_quietly, args=(executor,), daemon=True)
@@ -594,11 +618,14 @@ def main():
         print(f'속도     : {BASE_SPEED:.2f} m/s, 차선 상실 {LOST_SLOW_SEC}s 감속 / {LOST_STOP_SEC}s 정지')
         print(f'비상 정지: 전방 {FRONT_STOP_DISTANCE:.2f} m 이하, 초음파 {SONAR_TIMEOUT}s 끊김, '
               f'무효값 {SONAR_INVALID_COUNT}회 연속')
+        if args.speed_scaled_stop or args.spin_near_wall:
+            print(f'  선택    : {"속도별 정지 거리 0.10–0.15 m  " if args.speed_scaled_stop else ""}'
+                  f'{f"갈림길 회전은 {SPIN_MIN_DISTANCE} m 까지 허용" if args.spin_near_wall else ""}')
         print(f'주행 로그: {csv_path}')
         print(f'주행 영상: {video_path if recorder else "(--record 없음)"}')
         print(f'표시 영상: {debug.topic + " (구독자가 있을 때만)" if debug else "(끔)"}')
         if guide:
-            print(f'갈림길   : 대기 중에 ← 좌회전 / → 우회전 / ↑ 직진  (odom {node.odom_sub.topic_name}, 기록 {jlog.path.name})')
+            print(f'갈림길   : ↓ 멈춤, 대기 중에 ← 좌회전 / → 우회전 / ↑ 직진  (odom {node.odom_sub.topic_name}, 기록 {jlog.path.name})')
         print('Space     : 출발 / 재개      Enter, ESC : 종료')
         print('=' * 60)
         print()
@@ -622,6 +649,10 @@ def main():
                     elif key == 'start':
                         ok, reason = node.try_start(node.now_sec())
                         print('출발' if ok else f'출발 불가: {reason}')
+                    elif key == 'down' and guide is not None:          # 수동 정지는 비상 정지 중에도 받는다 (안전한 쪽)
+                        now_key = node.now_sec()
+                        ok, message = guide.pause(now_key, node.odom_pose(now_key))
+                        print(f'갈림길 키 down: {message}')
                     elif key in ARROW_KEYS and guide is not None:     # 옵션이 없으면 화살표는 무시 (지금 동작 그대로)
                         tripped, reason = node.is_tripped()
                         if tripped:                                    # 비상 정지 중에는 꺾기를 시작하지 않는다
@@ -668,7 +699,8 @@ def main():
                         v, w, note = guide.update(now, (v, w, note), valid,
                                                   confs['left_lane'] is not None and confs['right_lane'] is not None,
                                                   confs['cross_lane'] is not None, tracker.lost_time, pose)
-                v, w, state = node.drive(v, w, now)                 # 초음파 정지는 여기서 맨 마지막에 (최우선)
+                allow_spin = args.spin_near_wall and guide is not None and guide.state == 'TURN'
+                v, w, state = node.drive(v, w, now, allow_spin)     # 초음파 정지는 여기서 맨 마지막에 (최우선)
 
                 step, t = steps, now - loop_start
                 sonar = node.sonar_snapshot(node.now_sec())   # 프레임 시각 이후 도착한 측정도 있어 지금 시각 기준

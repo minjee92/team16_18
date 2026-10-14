@@ -12,6 +12,8 @@
              (한쪽 차선만 보일 때 조향하면 그 선 쪽으로 끌려가 차선 밖으로 나갔다 — 시뮬 D2 확인. 그래서 곧게만 간다)
 
 대기에 들어가는 조건 (FOLLOW 에서):
+  - 사람이 ↓ 를 누름 (pause). 갈림길을 확실히 잡는 방법 — 카메라만으로는 J 를 놓칠 때가 있다
+    (시뮬: J 를 스스로 지나간 4번 모두 cross_lane 이 한 번도 안 보였다)
   - 최근 cross_window 초 안에 cross_lane 이 cross_min 번 이상 보였고, 차선 상실이 wait_lost_sec 를 넘음
   - 또는 차선 상실 정지 (controller 가 STOP 을 냄)
 
@@ -138,6 +140,15 @@ class JunctionGuide:
         self.both_streak = 0
         self.state = REACQUIRE if direction == 'straight' else ENTER
         return True, f'{direction} 시작'
+
+    def pause(self, now, pose=None):
+        """↓ 키: 지금 멈추고 방향 키를 기다린다. 꺾는 중이면 꺾기를 그만두고 대기. 반환: (받았는지, 안내 글)."""
+        if self.state == WAIT:
+            return False, '이미 대기 중 — 방향 키(← → ↑)를 누르세요'
+        if self.maneuvering:
+            self._finish(now, 'aborted: MANUAL', pose)
+        self._enter_wait(now, 'MANUAL')
+        return True, '수동 정지 — 방향 키(← → ↑)를 기다립니다'
 
     def abort(self, now, reason, pose=None):
         """비상 정지 등으로 꺾기를 그만둔다 → WAIT. 꺾는 중이 아니면 아무것도 안 함."""

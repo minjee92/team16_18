@@ -4,6 +4,6 @@ project(mj_lane_sim)
 find_package(ament_cmake REQUIRED)
 install(DIRECTORY launch worlds config maps DESTINATION share/${PROJECT_NAME})
 install(PROGRAMS scripts/sim_urdf.sh scripts/sim_camera.py scripts/gz_remove_model.sh scripts/smoke_sim.py
-  scripts/sim_front_range.py scripts/run_mj_sim.sh
+  scripts/sim_front_range.py scripts/run_mj_sim.sh scripts/sim_obstacle_test.py
   DESTINATION lib/${PROJECT_NAME})
 ament_package()

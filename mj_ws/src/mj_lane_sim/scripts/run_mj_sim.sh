@@ -6,6 +6,8 @@
 #   bash run_mj_sim.sh camera [debug]    # ③ 카메라 화면 (rqt_image_view). debug = 검출 표시 화면 (drive 가 떠 있어야 나옴)
 #   bash run_mj_sim.sh teleop            # ④ 키보드 운전 (먼저 z 를 6–7번 눌러 0.15 m/s 쯤으로. k = 멈춤)
 #   bash run_mj_sim.sh drive [옵션...]   # ④ 대신: 내 차선 주행 노드 (Space 출발, Enter 종료). 옵션 예: --dry-run --record
+#                                          시뮬에서는 --speed-scaled-stop --spin-near-wall 을 켠다 (실물 기본값은 B4 에서 정함)
+#   bash run_mj_sim.sh obstacle-test     # ② 다음에: 상자를 놓고 "진짜 장애물 앞에서 멈추고 수동 재개" 확인 (PASS/FAIL)
 #   bash run_mj_sim.sh stop              # 남은 Gazebo 프로세스 정리 (mj_sim 파티션만)
 #
 # 바꿀 수 있는 환경 변수: MJ_NS (기본 amr_01), PY (기본 ~/venv/yolo_venv/bin/python, drive 용)
@@ -40,7 +42,9 @@ case "$cmd" in
   drive)
     cd "$MJ_WS"
     exec "$PY" src/robot/step2_lane_follow.py --camera-topic --namespace "$NS" \
-      --sonar-topic us_sensor/range --use-sim-time "$@" ;;
+      --sonar-topic us_sensor/range --use-sim-time --speed-scaled-stop --spin-near-wall "$@" ;;
+  obstacle-test)
+    exec /usr/bin/python3 "$HERE/sim_obstacle_test.py" "$0" "$NS" "$@" ;;
   stop)
     # pkill 에는 환경 변수로 고르는 옵션이 없다 → GZ_PARTITION=mj_sim 인 gz sim 만 골라 끈다 (팀원 시뮬은 안 건드림)
     n=0
@@ -51,5 +55,5 @@ case "$cmd" in
     done
     echo "mj_sim Gazebo 프로세스 ${n}개 정리함" ;;
   *)
-    sed -n '2,11p' "$0"; exit 1 ;;
+    sed -n '2,14p' "$0"; exit 1 ;;
 esac

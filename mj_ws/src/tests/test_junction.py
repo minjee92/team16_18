@@ -1,6 +1,7 @@
 """
 [빠름: 모델·ROS 불필요] 갈림길 키 판단 (mj_lane_core.junction.JunctionGuide)
 
+  - ↓ 수동 정지: 바로 대기, 대기 중 무시, 꺾는 중이면 취소 후 대기
   - 대기 조건: 차선 상실 정지 / cross_lane 최근 2번 + 상실 0.5초 초과. cross_lane 한 번만이면 대기 안 함
   - 키는 대기 중에만, odom 없으면 거부
   - 우회전: ENTER(앞으로 enter_dist 0.20 m) → TURN(−ω, 70°) → REACQUIRE(곧게, 좌우 차선 3프레임 연속) → FOLLOW
@@ -127,6 +128,18 @@ T.check('꺾는 중 비상 정지 → WAIT, 결과 aborted', g.state == WAIT and
 g = JunctionGuide()
 g.abort(0.0, 'ESTOP OBSTACLE')
 T.check('꺾는 중이 아니면 abort 는 아무것도 안 함', g.state == FOLLOW and not g.events)
+g = JunctionGuide()
+ok, msg = g.pause(1.0, (0, 0, 0))
+T.check('↓ 수동 정지: FOLLOW 에서 바로 WAIT (이유 MANUAL), 0 명령',
+        ok and g.state == WAIT and g.wait_reason == 'MANUAL'
+        and g.update(1.1, FOLLOW_CMD, True, True, False, 0.0, (0, 0, 0))[:2] == (0.0, 0.0), msg)
+ok, msg = g.pause(1.2)
+T.check('↓ 를 대기 중에 또 누르면 무시', not ok and g.state == WAIT, msg)
+g = wait_by_stop()
+g.key('right', 0.0, (0, 0, 0))
+ok, _ = g.pause(0.5, (0.01, 0, 0))
+T.check('↓ 를 꺾는 중에 누르면 꺾기 취소 → 대기', ok and g.state == WAIT
+        and any(e.get('result') == 'aborted: MANUAL' for e in g.events))
 kinds = [e['kind'] for e in wait_by_stop().events]
 T.check('대기 시작이 events 에 남음', kinds == ['wait'])
 

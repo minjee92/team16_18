@@ -211,6 +211,76 @@ states = {r['junction_state'] for r in main}
 T.check('[1] 주행 CSV 에 갈림길 열 (FOLLOW·WAIT·ENTER·TURN·REACQUIRE 가 나옴)',
         {'FOLLOW', 'WAIT', 'ENTER', 'TURN', 'REACQUIRE'} <= states, f'{states}')
 
+# ---------------- 2. 선택 기능 켬: --speed-scaled-stop (B) --spin-near-wall (D), ↓ 수동 정지 ----------------
+DOWN = b'\x1b[B'
+
+
+def wait_cmd(pred, since, limit):
+    deadline = time.monotonic() + limit
+    while time.monotonic() < deadline:
+        if any(pred(v, w) for t, v, w in list(harness.cmds) if t >= since):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+harness.range = 0.5
+harness.cmds.clear()
+proc, master, log, log_path, out_dir = start_node(['--junction-keys', '--speed-scaled-stop', '--spin-near-wall'])
+T.check('[2] 선택 기능 안내 줄', '속도별 정지 거리' in log_path.read_text() and '갈림길 회전은 0.05 m 까지 허용' in log_path.read_text())
+os.write(master, b' ')
+T.check('[2] 상실 정지 → 대기', wait_text(log_path, '갈림길 대기 (LANE LOST STOP)', 6))
+os.write(master, RIGHT)
+t_key = time.monotonic()
+T.check('[2] 회전 단계 시작', wait_cmd(lambda v, w: v == 0.0 and w < 0, t_key, 8))
+harness.range = 0.12                                          # D: 회전 중 앞 0.12 m → 회전은 계속
+t_near = time.monotonic()
+time.sleep(0.6)
+T.check('[2] D: 회전 중 0.12 m 장애물이면 비상 정지 없이 회전 계속',
+        'OBSTACLE' not in log_path.read_text() and wait_cmd(lambda v, w: v == 0.0 and w < 0, t_near + 0.3, 0.1))
+harness.range = 0.04                                          # 몸통에 너무 가까움 → 회전도 막음
+T.check('[2] D: 0.04 m 면 회전도 막고 비상 정지 → 꺾기 취소', wait_text(log_path, 'aborted: ESTOP OBSTACLE', 2))
+t_stop = time.monotonic()
+time.sleep(0.5)
+T.check('[2] D: 정지 뒤 명령 0', all(v == 0.0 and w == 0.0 for t, v, w in harness.cmds if t > t_stop + 0.2))
+harness.range = 0.5
+time.sleep(0.3)
+os.write(master, b' ')                                        # 재개 → 대기
+time.sleep(0.5)
+os.write(master, UP)                                          # 직진 = 다시 잡기 0.05 m/s
+t_up = time.monotonic()
+T.check('[2] ↑ 직진: 0.05 m/s 로 전진', wait_cmd(lambda v, w: abs(v - S2.JUNCTION_SPEED) < 1e-9, t_up, 2))
+harness.range = 0.12                                          # B: 0.05 m/s 면 정지 거리 0.105 m → 0.12 m 는 통과
+t_b = time.monotonic()
+time.sleep(0.8)
+T.check('[2] B: 0.05 m/s 일 때 0.12 m 는 멈추지 않음 (기본이면 0.15 m 라 멈춤)',
+        'OBSTACLE' not in log_path.read_text()[log_path.read_text().find('갈림길 키 up'):]
+        and wait_cmd(lambda v, w: v > 0, t_b + 0.4, 0.1))
+harness.range = 0.09                                          # 진짜 장애물이 바닥값(0.10 m)보다 가까움 → 정지
+T.check('[2] B: 0.09 m 장애물이면 느려도 비상 정지', wait_text(log_path, '비상 정지: OBSTACLE (range 0.090', 2))
+t_real = time.monotonic()
+time.sleep(0.5)
+os.write(master, b' ')
+T.check('[2] 장애물이 남아 있으면 재개 거부 (수동 재개 유지)', wait_text(log_path, '출발 불가: OBSTACLE', 2)
+        and all(v == 0.0 for t, v, w in harness.cmds if t > t_real + 0.2))
+harness.range = 0.5
+time.sleep(0.3)
+os.write(master, b' ')
+time.sleep(0.5)
+os.write(master, UP)
+time.sleep(1.0)
+os.write(master, DOWN)                                        # ↓ 수동 정지
+T.check('[2] ↓ 수동 정지 → 대기 (MANUAL), 꺾기 취소', wait_text(log_path, '갈림길 대기 (MANUAL)', 2)
+        and '갈림길 straight: aborted: MANUAL' in log_path.read_text())
+t_pause = time.monotonic()
+time.sleep(0.6)
+T.check('[2] ↓ 뒤 명령 0', all(v == 0.0 and w == 0.0 for t, v, w in harness.cmds if t > t_pause + 0.3))
+finish(proc, master, log)
+T.check('[2] 정상 종료', proc.returncode == 0, f'exit {proc.returncode}, log {log_path}')
+rows = list(csv.DictReader(open(next(out_dir.glob('*_junctions.csv')))))
+manual = [r for r in rows if r['kind'] == 'wait' and r['wait_reason'] == 'MANUAL']
+T.check('[2] 갈림길 CSV 에 수동 대기와 사진', manual and len(manual[0]['images'].split()) == 2)
+
 executor.shutdown()
 spin_thread.join(timeout=5)
 harness.destroy_node()

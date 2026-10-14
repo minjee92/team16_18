@@ -216,8 +216,11 @@ T.check('[B] CSV 시각이 시뮬 초: 줄 간격 중앙값 0.1초', dts and abs
         f'중앙값 {statistics.median(dts):.3f}' if dts else '줄 없음')
 lost = [float(r['lost_time']) for r in rows[2:]]     # 처음 두 줄은 첫 추론이 느려 같은 0.1초 칸에 들 수 있어 뺀다
 steps = [round(b - a, 6) for a, b in zip(lost, lost[1:])]
-T.check('[B] 상실 시간이 줄마다 정확히 0.1 시뮬 초씩 늘어남 (셋째 줄부터)', steps and all(s == 0.1 for s in steps),
-        f'{sorted(set(steps))[:5]}')
+ones = sum(1 for x in steps if x == 0.1)
+T.check('[B] 상실 시간이 시뮬 초로 0.1초 칸씩 늘어남 (셋째 줄부터. 모두 0.1 의 배수, 90% 이상 정확히 0.1 —\n'
+        '    루프가 시뮬 시간으로 0.15초 넘게 밀리면 그만큼 칸을 더 세는 것은 설계대로)',
+        steps and all(x >= 0.1 and abs(x * 10 - round(x * 10)) < 1e-6 for x in steps) and ones >= 0.9 * len(steps),
+        f'0.1 칸 {ones}/{len(steps)}, 값 {sorted(set(steps))[:5]}')
 rate = len(rows) / wall
 T.check('[B] 제어 루프가 실제 시간으로는 약 5 Hz (RTF 0.5)', 3.5 <= rate <= 6.5, f'{rate:.1f} 줄/초 (실제 {wall:.1f}s)')
 

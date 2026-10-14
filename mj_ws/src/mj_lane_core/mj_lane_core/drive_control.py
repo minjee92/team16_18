@@ -31,10 +31,22 @@ class FrontStop:
 
     무효값 통계: invalid_ignored (무시한 무효 측정 수), invalid_spikes (무시한 튐 구간 수),
     invalid_stops (무효값으로 정지한 횟수). 정지로 이어진 무효값은 무시 수에 넣지 않는다.
+
+    선택 기능 (둘 다 기본 꺼짐 → 정지 거리 stop_distance 고정, 지금 동작 그대로):
+      speed_scaled = (margin, reaction_sec, min_distance)
+          정지 거리를 속도에 맞춘다: margin + 속도 × reaction_sec 를 [min_distance, stop_distance] 로 자른다.
+          예 (0.06, 0.9, 0.10): 0.10 m/s → 0.15 m, 0.05 m/s → 0.105 m. 느릴 때만 더 가까이 간다.
+          수동 재개(clear)는 속도와 상관없이 stop_distance 로 판단한다 (다시 출발하면 빨라지므로).
+      spin_min
+          spin_ok(): 센서가 정상이고 장애물이 spin_min 보다 멀면 "제자리 회전은 괜찮다" 고 답한다.
+          주행 노드는 갈림길 회전 단계(전진 0)에서만 이 답을 쓴다. 너무 가까우면(spin_min 이하) 회전도 막는다.
+    사람·다른 로봇 같은 진짜 장애물 앞에서도 같은 규칙이다: 멈추고, 수동 재개 전까지 앞으로 가지 않는다.
     """
 
-    def __init__(self, stop_distance, timeout, min_range, invalid_count=3):
+    def __init__(self, stop_distance, timeout, min_range, invalid_count=3, speed_scaled=None, spin_min=None):
         self.stop_distance = stop_distance
+        self.speed_scaled = speed_scaled
+        self.spin_min = spin_min
         self.timeout = timeout
         self.min_range = min_range
         self.invalid_count = invalid_count
@@ -63,8 +75,22 @@ class FrontStop:
         self.invalid_streak = 0
         self.valid_range = value
 
-    def reason(self, now):
-        """지금 정지해야 하는 이유. 없으면 ''."""
+    def stop_distance_for(self, speed=None):
+        """이 속도(m/s)에서 쓰는 정지 거리. speed_scaled 가 꺼져 있거나 속도를 모르면 stop_distance."""
+        if self.speed_scaled is None or speed is None:
+            return self.stop_distance
+        margin, reaction, minimum = self.speed_scaled
+        return min(self.stop_distance, max(minimum, margin + max(speed, 0.0) * reaction))
+
+    def spin_ok(self, now):
+        """제자리 회전은 괜찮은지: spin_min 이 켜져 있고, 센서가 정상이고, 장애물이 spin_min 보다 멀다."""
+        if self.spin_min is None:
+            return False
+        reason = self.reason(now)
+        return reason in ('', 'OBSTACLE') and self.valid_range is not None and self.valid_range > self.spin_min
+
+    def reason(self, now, speed=None):
+        """지금 정지해야 하는 이유. 없으면 ''. speed: 낼 전진 속도 (speed_scaled 일 때만 씀)."""
         if self.last_time is None:
             return 'NO SONAR'
         if now - self.last_time > self.timeout:
@@ -73,13 +99,13 @@ class FrontStop:
             return 'SONAR INVALID'
         if self.valid_range is None:
             return 'NO SONAR'
-        if self.valid_range <= self.stop_distance:
+        if self.valid_range <= self.stop_distance_for(speed):
             return 'OBSTACLE'
         return ''
 
-    def check(self, now):
+    def check(self, now, speed=None):
         """정지 조건을 평가해 걸리면 정지 상태로 만든다. 반환: 지금 정지 상태인지."""
-        reason = self.reason(now)
+        reason = self.reason(now, speed)
         if reason and not self.tripped:
             self.tripped = True
             self.trip_reason = reason
