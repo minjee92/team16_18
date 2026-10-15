@@ -84,6 +84,9 @@
   - 주행 코드(`mj_lane_core`·`mj_lane_drive`)는 틸트를 쓰지 않는다. 시뮬 카메라에만 쓰인다
   - 바꾸는 곳 (시뮬, 지금 기본 8°): `mj_lane_sim/launch/sim_robot.launch.xml` 의 `camera_tilt` 인자 기본값.
     실행할 때만 바꾸려면 `camera_tilt:=값`. `scripts/sim_urdf.sh` 의 4번째 인자 기본값(8)도 같이 맞춘다
+- 참고값 (**Team 6 보정 기준, amr_01 미확인**. 출처: Team 6 발표 자료, pinky_cam.yaml@a7311c5): 같은 Pinky Pro 카메라를 체커보드로 보정해
+  초점거리 558.8 px (640×480) → 화각 59.6° × 46.5°, 높이 60.63 mm, 아래 기울기 6.21°, 왜곡 작음. 표준 사양 53.5° 와 6° 다르다.
+  보정은 picamera2 preview 설정, 내 주행 노드는 video 설정이라 같은 센서 모드인지 실물 첫날 확인 (PLAN "참고: Team 6")
 
 ### 차동구동 변환식
 
